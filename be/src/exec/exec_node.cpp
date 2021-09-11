@@ -69,6 +69,7 @@
 #include "exec/vectorized/olap_scan_node.h"
 #include "exec/vectorized/project_node.h"
 #include "exec/vectorized/repeat_node.h"
+#include "exec/vectorized/schema_scan_node.h"
 #include "exec/vectorized/table_function_node.h"
 #include "exec/vectorized/topn_node.h"
 #include "exec/vectorized/union_node.h"
@@ -552,7 +553,7 @@ Status ExecNode::create_vectorized_node(starrocks::RuntimeState* state, starrock
         *node = pool->add(new EsHttpScanNode(pool, tnode, descs));
         return Status::OK();
     case TPlanNodeType::SCHEMA_SCAN_NODE:
-        *node = pool->add(new SchemaScanNode(pool, tnode, descs));
+        *node = pool->add(new vectorized::SchemaScanNode(pool, tnode, descs));
         return Status::OK();
     default:
         return Status::InternalError(strings::Substitute("Vectorized engine not support node: $0", tnode.node_type));
@@ -583,9 +584,9 @@ Status ExecNode::create_node(RuntimeState* state, ObjectPool* pool, const TPlanN
         *node = pool->add(new EsHttpScanNode(pool, tnode, descs));
         return Status::OK();
 
-    case TPlanNodeType::SCHEMA_SCAN_NODE:
-        *node = pool->add(new SchemaScanNode(pool, tnode, descs));
-        return Status::OK();
+    //case TPlanNodeType::SCHEMA_SCAN_NODE:
+    //    *node = pool->add(new SchemaScanNode(pool, tnode, descs));
+    //    return Status::OK();
 
     case TPlanNodeType::OLAP_SCAN_NODE:
         *node = pool->add(new OlapScanNode(pool, tnode, descs));
