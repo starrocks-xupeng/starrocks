@@ -432,7 +432,7 @@ void Aggregator::output_chunk_by_streaming_with_selection(vectorized::ChunkPtr* 
         // At present, the type of problem cannot be completely solved,
         // and a new solution needs to be designed to solve it completely
         if (_group_by_column->size() == chunk_size) {
-            _group_by_column->filter(_streaming_selection);
+            _group_by_column->filter(_streaming_selection, (*chunk)->num_rows());
         }
     }
     for (size_t i = 0; i < _agg_fn_ctxs.size(); i++) {
@@ -445,7 +445,7 @@ void Aggregator::output_chunk_by_streaming_with_selection(vectorized::ChunkPtr* 
             // At present, the type of problem cannot be completely solved,
             // and a new solution needs to be designed to solve it completely
             if (agg_input_column->size() == chunk_size) {
-                agg_input_column->filter(_streaming_selection);
+                agg_input_column->filter(_streaming_selection, (*chunk)->num_rows());
             }
         }
     }

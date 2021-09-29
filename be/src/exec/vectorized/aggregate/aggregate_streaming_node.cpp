@@ -132,11 +132,11 @@ Status AggregateStreamingNode::get_next(RuntimeState* state, ChunkPtr* chunk, bo
                         }
                     }
 
-                    size_t zero_count = SIMD::count_zero(_aggregator->streaming_selection());
+                    size_t zero_count = SIMD::count_zero(_aggregator->streaming_selection(), input_chunk_size);
                     if (zero_count == 0) {
                         SCOPED_TIMER(_aggregator->streaming_timer());
                         _aggregator->output_chunk_by_streaming(chunk);
-                    } else if (zero_count == _aggregator->streaming_selection().size()) {
+                    } else if (zero_count == input_chunk_size) {
                         SCOPED_TIMER(_aggregator->agg_compute_timer());
                         _aggregator->compute_batch_agg_states(input_chunk_size);
                     } else {
