@@ -174,8 +174,8 @@ Status S3Client::get_object_range(const std::string& bucket_name, const std::str
     return get_object_range(bucket_name, object_key, (char*)object_value->data(), offset, length, read_bytes);
 }
 
-Status S3Client::get_object_range(const std::string& bucket_name, const std::string& object_key, char* object_value,
-                                  size_t offset, size_t length, size_t* read_bytes) {
+Status S3Client::get_object_range(const std::string& bucket_name, const std::string& object_key,
+                                  char* object_value, size_t offset, size_t length, size_t* read_bytes) {
     *read_bytes = 0;
     length = (length ? length : 1);
     char buffer[128];
