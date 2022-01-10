@@ -6,13 +6,16 @@
 #include <aws/core/auth/AWSCredentialsProvider.h>
 #include <aws/core/utils/threading/Executor.h>
 #include <aws/s3/model/BucketLocationConstraint.h>
+#include <aws/s3/model/CompleteMultipartUploadRequest.h>
 #include <aws/s3/model/CreateBucketRequest.h>
+#include <aws/s3/model/CreateMultipartUploadRequest.h>
 #include <aws/s3/model/DeleteBucketRequest.h>
 #include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsRequest.h>
 #include <aws/s3/model/PutObjectRequest.h>
+#include <aws/s3/model/UploadPartRequest.h>
 #include <aws/transfer/TransferHandle.h>
 
 #include <fstream>
@@ -174,8 +177,8 @@ Status S3Client::get_object_range(const std::string& bucket_name, const std::str
     return get_object_range(bucket_name, object_key, (char*)object_value->data(), offset, length, read_bytes);
 }
 
-Status S3Client::get_object_range(const std::string& bucket_name, const std::string& object_key,
-                                  char* object_value, size_t offset, size_t length, size_t* read_bytes) {
+Status S3Client::get_object_range(const std::string& bucket_name, const std::string& object_key, char* object_value,
+                                  size_t offset, size_t length, size_t* read_bytes) {
     *read_bytes = 0;
     length = (length ? length : 1);
     char buffer[128];
@@ -371,6 +374,84 @@ Status S3Client::list_objects(const std::string& bucket_name, const std::string&
         }
     }
     return Status::OK();
+}
+
+Status S3Client::create_multipart_upload(const std::string& bucket_name, const std::string& object_key,
+                                         Aws::String* multipart_upload_id) {
+    Aws::S3::Model::CreateMultipartUploadRequest request;
+    request.SetBucket(to_aws_string(bucket_name));
+    request.SetKey(to_aws_string(object_key));
+
+    auto outcome = _client->CreateMultipartUpload(request);
+
+    if (outcome.IsSuccess()) {
+        *multipart_upload_id = outcome.GetResult().GetUploadId();
+        return Status::OK();
+    } else {
+        std::string error = strings::Substitute("Create Multipart Upload for object $0 failed. $1.", object_key,
+                                          outcome.GetError().GetMessage());
+        LOG(ERROR) << error;
+        return Status::IOError(error);
+    }
+}
+
+Status S3Client::upload_part(const std::string& bucket_name, const std::string& object_key,
+                             const Aws::String& multipart_upload_id, std::shared_ptr<Aws::StringStream> stream,
+                             std::vector<Aws::String>* part_tags) {
+    Aws::S3::Model::UploadPartRequest request;
+
+    request.SetBucket(to_aws_string(bucket_name));
+    request.SetKey(to_aws_string(object_key));
+    request.SetPartNumber(part_tags->size() + 1);
+    request.SetUploadId(multipart_upload_id);
+    request.SetContentLength(stream->tellp());
+    request.SetBody(stream);
+
+    auto outcome = _client->UploadPart(request);
+
+    if (outcome.IsSuccess()) {
+        part_tags->push_back(outcome.GetResult().GetETag());
+        return Status::OK();
+    } else {
+        std::string error = strings::Substitute("Upload Part for object $0 failed. $1.", object_key,
+                                          outcome.GetError().GetMessage());
+        LOG(ERROR) << error;
+        return Status::IOError(error);
+    }
+}
+
+Status S3Client::complete_multipart_upload(const std::string& bucket_name, const std::string& object_key,
+                                           const Aws::String& multipart_upload_id,
+                                           const std::vector<Aws::String>& part_tags) {
+    Aws::S3::Model::CompleteMultipartUploadRequest request;
+    request.SetBucket(to_aws_string(bucket_name));
+    request.SetKey(to_aws_string(object_key));
+    request.SetUploadId(multipart_upload_id);
+
+    Aws::S3::Model::CompletedMultipartUpload multipart_upload;
+    for (size_t i = 0; i < part_tags.size(); ++i) {
+        Aws::S3::Model::CompletedPart part;
+        multipart_upload.AddParts(part.WithETag(part_tags[i]).WithPartNumber(i + 1));
+    }
+    request.SetMultipartUpload(multipart_upload);
+
+    auto outcome = _client->CompleteMultipartUpload(request);
+
+    if (outcome.IsSuccess()) {
+        return Status::OK();
+    } else {
+        std::string error = strings::Substitute("Complete Multipart Upload for object $0 failed. $1.", object_key,
+                                          outcome.GetError().GetMessage());
+        LOG(ERROR) << error;
+        return Status::IOError(error);
+    }
+}
+
+S3Client* S3Client::get_s3_client() {
+    static Aws::Client::ClientConfiguration config;
+    config.region = Aws::Region::AP_SOUTHEAST_1;
+    static S3Client s3_client(config);
+    return &s3_client;
 }
 
 } // namespace starrocks
