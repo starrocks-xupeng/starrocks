@@ -217,7 +217,6 @@ S3Env::S3Env() {
     Aws::InitAPI(_options);
 
     _client = S3Client::get_s3_client();
-}
 
 S3Env::~S3Env() {
     Aws::ShutdownAPI(_options);
