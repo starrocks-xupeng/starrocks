@@ -12,6 +12,7 @@
 #include "common/config.h"
 #include "common/logging.h"
 #include "env/env.h"
+#include "env/env_s3.h"
 #include "env/env_util.h"
 #include "gutil/strings/substitute.h"
 #include "storage/fs/block_id.h"
@@ -364,6 +365,12 @@ Status S3BlockManager::_delete_block(const string& path) {
 
     RETURN_IF_ERROR(_env->delete_file(path));
     return Status::OK();
+}
+
+BlockManager* S3BlockManager::get_block_mgr() {
+    static BlockManagerOptions opts;
+    static S3BlockManager s3_block_manager(S3Env::get_s3_env(), opts);
+    return &s3_block_manager;
 }
 
 } // namespace starrocks::fs

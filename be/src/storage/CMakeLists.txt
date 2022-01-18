@@ -28,6 +28,12 @@ set(EXECUTABLE_OUTPUT_PATH "${BUILD_DIR}/src/storage")
 add_subdirectory(rowset)
 add_subdirectory(fs)
 
+if (WITH_AWS)
+    set(EXEC_FILES ${EXEC_FILES}
+        s3_data_dir.cpp
+    )
+endif()
+
 add_library(Storage STATIC
     base_tablet.cpp
     decimal12.cpp
@@ -148,4 +154,5 @@ add_library(Storage STATIC
     vectorized/rowset_merger.cpp
     vectorized/column_predicate_rewriter.cpp
     vectorized/column_predicate_dict_conjuct.cpp
+    ${EXEC_FILES}
 )

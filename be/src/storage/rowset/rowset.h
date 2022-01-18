@@ -44,6 +44,10 @@ class RowsetFactory;
 class RowsetReader;
 class TabletSchema;
 
+namespace fs {
+class BlockManager;
+} // namespace fs
+
 namespace vectorized {
 class RowsetReadOptions;
 class Schema;
@@ -253,7 +257,7 @@ protected:
     Rowset(const Rowset&) = delete;
     const Rowset& operator=(const Rowset&) = delete;
     // this is non-public because all clients should use RowsetFactory to obtain pointer to initialized Rowset
-    Rowset(const TabletSchema* schema, std::string rowset_path, RowsetMetaSharedPtr rowset_meta);
+    Rowset(const TabletSchema* schema, std::string rowset_path, RowsetMetaSharedPtr rowset_meta, fs::BlockManager* block_mgr);
 
     // this is non-public because all clients should use RowsetFactory to obtain pointer to initialized Rowset
     virtual OLAPStatus init() = 0;
@@ -269,6 +273,7 @@ protected:
 
     const TabletSchema* _schema;
     std::string _rowset_path;
+    fs::BlockManager* _block_mgr;
     RowsetMetaSharedPtr _rowset_meta;
 
     // mutex lock for load/close api because it is costly

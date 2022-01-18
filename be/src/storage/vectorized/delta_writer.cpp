@@ -172,6 +172,8 @@ Status DeltaWriter::_init() {
     writer_context.load_id = _opt.load_id;
     writer_context.segments_overlap = OVERLAPPING;
     writer_context.global_dicts = _opt.global_dicts;
+    writer_context.env = _tablet->data_dir()->get_env();
+    writer_context.block_mgr = _tablet->data_dir()->get_block_mgr();
     Status st = RowsetFactory::create_rowset_writer(writer_context, &_rowset_writer);
     if (!st.ok()) {
         _set_state(kAborted);

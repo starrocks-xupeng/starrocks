@@ -24,6 +24,7 @@
 #include "gen_cpp/olap_file.pb.h"
 #include "storage/data_dir.h"
 #include "storage/rowset/rowset.h"
+#include "storage/fs/fs_util.h"
 
 namespace starrocks {
 
@@ -35,7 +36,8 @@ public:
     // return OK on success and set inited rowset in `*rowset`.
     // return error if failed to create or init rowset.
     static Status create_rowset(const TabletSchema* schema, const std::string& rowset_path,
-                                const RowsetMetaSharedPtr& rowset_meta, RowsetSharedPtr* rowset);
+                                const RowsetMetaSharedPtr& rowset_meta, RowsetSharedPtr* rowset,
+                                fs::BlockManager* block_mgr = fs::fs_util::block_manager());
 
     // create and init rowset writer.
     // return OK on success and set `*output` to inited rowset writer.

@@ -56,6 +56,7 @@
 #include "util/file_utils.h"
 #include "util/monotime.h"
 #include "util/string_util.h"
+#include "util/path_util.h"
 
 using strings::Substitute;
 
@@ -739,4 +740,19 @@ bool DataDir::reach_capacity_limit(int64_t incoming_data_size) {
     }
     return false;
 }
+
+std::string DataDir::get_tablet_path(int16_t shard_id, int64_t tablet_id, int64_t schema_hash) {
+    std::string tablet_dir = path();
+    tablet_dir = path_util::join_path_segments(tablet_dir, DATA_PREFIX);
+    tablet_dir = path_util::join_path_segments(tablet_dir, std::to_string(shard_id));
+    tablet_dir = path_util::join_path_segments(tablet_dir, std::to_string(tablet_id));
+    tablet_dir = path_util::join_path_segments(tablet_dir, std::to_string(schema_hash));
+    return tablet_dir;
+}
+
+Status DataDir::create_tablet_dir(int16_t shard_id, int64_t tablet_id, int64_t schema_hash, std::string* dir) {
+    *dir = get_tablet_path(shard_id, tablet_id, schema_hash);
+    return FileUtils::create_dir(*dir);
+}
+
 } // namespace starrocks

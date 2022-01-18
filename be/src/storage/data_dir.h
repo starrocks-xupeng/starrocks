@@ -34,6 +34,8 @@
 #include "storage/kv_store.h"
 #include "storage/olap_common.h"
 #include "storage/rowset/rowset_id_generator.h"
+#include "env/env.h"
+#include "storage/fs/fs_util.h"
 
 namespace starrocks {
 
@@ -48,9 +50,11 @@ class DataDir {
 public:
     DataDir(std::string path, TStorageMedium::type storage_medium = TStorageMedium::HDD,
             TabletManager* tablet_manager = nullptr, TxnManager* txn_manager = nullptr);
-    ~DataDir();
+    virtual ~DataDir();
+    virtual Env* get_env() { return Env::Default(); }
+    virtual fs::BlockManager* get_block_mgr() { return fs::fs_util::block_manager(); }
 
-    Status init(bool read_only = false);
+    virtual Status init(bool read_only = false);
     void stop_bg_worker();
 
     const std::string& path() const { return _path; }
@@ -73,12 +77,13 @@ public:
     // save a cluster_id file under data path to prevent
     // invalid be config for example two be use the same
     // data path
-    Status set_cluster_id(int32_t cluster_id);
-    void health_check();
+    virtual Status set_cluster_id(int32_t cluster_id);
+    virtual void health_check();
 
-    OLAPStatus get_shard(uint64_t* shard);
+    virtual OLAPStatus get_shard(uint64_t* shard);
 
     KVStore* get_meta() { return _kv_store; }
+    void set_meta(KVStore* kv_store) { _kv_store = kv_store; }
 
     bool is_ssd_disk() const { return _storage_medium == TStorageMedium::SSD; }
 
@@ -91,20 +96,20 @@ public:
     std::string get_absolute_shard_path(int64_t shard_id);
     std::string get_absolute_tablet_path(int64_t shard_id, int64_t tablet_id, int32_t schema_hash);
 
-    void find_tablet_in_trash(int64_t tablet_id, std::vector<std::string>* paths);
+    virtual void find_tablet_in_trash(int64_t tablet_id, std::vector<std::string>* paths);
 
     static std::string get_root_path_from_schema_hash_path_in_trash(const std::string& schema_hash_dir_in_trash);
 
     // load data from meta and data files
-    OLAPStatus load();
+    virtual OLAPStatus load();
 
     // this function scans the paths in data dir to collect the paths to check
     // this is a producer function. After scan, it will notify the perform_path_gc function to gc
-    void perform_path_scan();
+    virtual void perform_path_scan();
 
-    void perform_path_gc_by_rowsetid();
+    virtual void perform_path_gc_by_rowsetid();
 
-    void perform_path_gc_by_tablet();
+    virtual void perform_path_gc_by_tablet();
 
     // check if the capacity reach the limit after adding the incoming data
     // return true if limit reached, otherwise, return false.
@@ -112,11 +117,14 @@ public:
     // so in order to avoid running out of disk capacity, we currently use the actual
     // disk available capacity and total capacity to do the calculation.
     // So that the capacity StarRocks actually used may exceeds the user specified capacity.
-    bool reach_capacity_limit(int64_t incoming_data_size);
+    virtual bool reach_capacity_limit(int64_t incoming_data_size);
 
-    Status update_capacity();
+    virtual Status update_capacity();
 
-private:
+    virtual std::string get_tablet_path(int16_t shard_id, int64_t tablet_id, int64_t schema_hash);
+    virtual Status create_tablet_dir(int16_t shard_id, int64_t tablet_id, int64_t schema_hash, std::string* dir);
+
+protected:
     std::string _cluster_id_path() const { return _path + CLUSTER_ID_PREFIX; }
     Status _init_cluster_id();
     Status _init_data_dir();

@@ -41,6 +41,7 @@
 #include "storage/vectorized/merge_iterator.h"
 #include "storage/vectorized/projection_iterator.h"
 #include "storage/vectorized/union_iterator.h"
+#include "storage/fs/block_manager.h"
 
 namespace starrocks {
 
@@ -60,22 +61,19 @@ std::string BetaRowset::segment_srcrssid_file_path(const std::string& dir, const
     return strings::Substitute("$0/$1_$2.rssid", dir, rowset_id.to_string(), segment_id);
 }
 
-BetaRowset::BetaRowset(const TabletSchema* schema, string rowset_path, RowsetMetaSharedPtr rowset_meta)
-        : Rowset(schema, std::move(rowset_path), std::move(rowset_meta)) {}
+BetaRowset::BetaRowset(const TabletSchema* schema, string rowset_path, RowsetMetaSharedPtr rowset_meta, fs::BlockManager* block_mgr)
+        : Rowset(schema, std::move(rowset_path), std::move(rowset_meta), block_mgr) {}
 
 OLAPStatus BetaRowset::init() {
     return OLAP_SUCCESS;
 }
 
 Status BetaRowset::do_load() {
-    // TODO: `BlockManager` should be passed in as an argument.
-    fs::BlockManager* block_mgr = fs::fs_util::block_manager();
-
     _segments.clear();
     size_t footer_size_hint = 16 * 1024;
     for (int seg_id = 0; seg_id < num_segments(); ++seg_id) {
         std::string seg_path = segment_file_path(_rowset_path, rowset_id(), seg_id);
-        auto res = Segment::open(ExecEnv::GetInstance()->tablet_meta_mem_tracker(), block_mgr, seg_path, seg_id,
+        auto res = Segment::open(ExecEnv::GetInstance()->tablet_meta_mem_tracker(), (fs::BlockManager*)_block_mgr, seg_path, seg_id,
                                  _schema, &footer_size_hint);
         if (!res.ok()) {
             LOG(WARNING) << "Fail to open " << seg_path << ": " << res.status();

@@ -44,6 +44,9 @@
 #include "runtime/exec_env.h"
 #include "storage/async_delta_writer_executor.h"
 #include "storage/data_dir.h"
+#ifdef STARROCKS_WITH_AWS
+#include "storage/s3_data_dir.h"
+#endif // STARROCKS_WITH_AWS
 #include "storage/fs/file_block_manager.h"
 #include "storage/lru_cache.h"
 #include "storage/memtable_flush_executor.h"
@@ -205,6 +208,14 @@ Status StorageEngine::_init_store_map() {
     for (auto& thread : threads) {
         thread.join();
     }
+
+#ifdef STARROCKS_WITH_AWS
+    // s3 data dir
+    DataDir* store = new S3DataDir("starrocks-cloud-test-demo", _tablet_manager.get(), _txn_manager.get());
+    auto st = store->init();
+    store->set_meta(tmp_stores[0].second->get_meta());
+    tmp_stores.emplace_back(true, store);
+#endif  // STARROCKS_WITH_AWS
 
     if (!error_msg.empty()) {
         return Status::InternalError(strings::Substitute("init path failed, error=$0", error_msg));
