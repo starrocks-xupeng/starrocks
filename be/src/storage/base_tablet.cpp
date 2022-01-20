@@ -46,11 +46,7 @@ OLAPStatus BaseTablet::set_tablet_state(TabletState state) {
 
 void BaseTablet::_gen_tablet_path() {
     if (_data_dir != nullptr) {
-        std::string path = _data_dir->path() + DATA_PREFIX;
-        path = path_util::join_path_segments(path, std::to_string(_tablet_meta->shard_id()));
-        path = path_util::join_path_segments(path, std::to_string(_tablet_meta->tablet_id()));
-        path = path_util::join_path_segments(path, std::to_string(_tablet_meta->schema_hash()));
-        _tablet_path = path;
+        _tablet_path = _data_dir->get_tablet_path(_tablet_meta->shard_id(), _tablet_meta->tablet_id(), _tablet_meta->schema_hash());
     }
 }
 

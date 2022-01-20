@@ -30,6 +30,8 @@ struct BlockManagerMetrics;
 
 class S3BlockManager : public BlockManager {
 public:
+    static BlockManager* get_block_mgr();
+
     S3BlockManager(Env* env, BlockManagerOptions opts);
     virtual ~S3BlockManager() override;
 

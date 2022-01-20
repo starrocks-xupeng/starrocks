@@ -39,18 +39,22 @@ class DelVector;
 using DelVectorPtr = std::shared_ptr<DelVector>;
 class KVStore;
 
+namespace fs {
+class BlockManager;
+} // namespace fs
+
 class BetaRowset : public Rowset {
 public:
     static std::shared_ptr<BetaRowset> create(MemTracker* mem_tracker, const TabletSchema* schema,
-                                              std::string rowset_path, RowsetMetaSharedPtr rowset_meta) {
+                                              std::string rowset_path, RowsetMetaSharedPtr rowset_meta, fs::BlockManager* block_mgr) {
         auto rowset =
-                std::shared_ptr<BetaRowset>(new BetaRowset(schema, std::move(rowset_path), std::move(rowset_meta)),
+                std::shared_ptr<BetaRowset>(new BetaRowset(schema, std::move(rowset_path), std::move(rowset_meta), block_mgr),
                                             DeleterWithMemTracker<BetaRowset>(mem_tracker));
         mem_tracker->consume(rowset->mem_usage());
         return rowset;
     }
 
-    BetaRowset(const TabletSchema* schema, std::string rowset_path, RowsetMetaSharedPtr rowset_meta);
+    BetaRowset(const TabletSchema* schema, std::string rowset_path, RowsetMetaSharedPtr rowset_meta, fs::BlockManager* block_mgr);
 
     ~BetaRowset() override {}
 

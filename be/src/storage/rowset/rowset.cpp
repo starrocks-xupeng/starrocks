@@ -29,9 +29,10 @@
 
 namespace starrocks {
 
-Rowset::Rowset(const TabletSchema* schema, std::string rowset_path, RowsetMetaSharedPtr rowset_meta)
+Rowset::Rowset(const TabletSchema* schema, std::string rowset_path, RowsetMetaSharedPtr rowset_meta, fs::BlockManager* block_mgr)
         : _schema(schema),
           _rowset_path(std::move(rowset_path)),
+          _block_mgr(block_mgr),
           _rowset_meta(std::move(rowset_meta)),
           _refs_by_reader(0) {}
 

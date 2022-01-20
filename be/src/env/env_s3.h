@@ -157,6 +157,7 @@ public:
 
     virtual Status link_file(const std::string& old_path, const std::string& new_path) override;
 
+
 private:
     S3Client*   _client;
     Aws::SDKOptions _options;

@@ -142,7 +142,7 @@ StatusOr<RowsetSharedPtr> BetaRowsetWriter::build() {
     }
     RowsetSharedPtr rowset;
     RETURN_IF_ERROR(
-            RowsetFactory::create_rowset(_context.tablet_schema, _context.rowset_path_prefix, _rowset_meta, &rowset));
+            RowsetFactory::create_rowset(_context.tablet_schema, _context.rowset_path_prefix, _rowset_meta, &rowset, _context.block_mgr));
     _already_built = true;
     return rowset;
 }
