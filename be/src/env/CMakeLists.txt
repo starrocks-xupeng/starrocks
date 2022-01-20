@@ -41,6 +41,7 @@ endif()
 
 if (WITH_AWS)
     set(EXEC_FILES ${EXEC_FILES}
+        env_s3.cpp
         s3_client.cpp
     )
 endif()

@@ -24,11 +24,20 @@ set(LIBRARY_OUTPUT_PATH "${BUILD_DIR}/src/storage/fs")
 
 # where to put generated binaries
 set(EXECUTABLE_OUTPUT_PATH "${BUILD_DIR}/src/storage/fs")
-  
-add_library(OlapFs STATIC
+
+set(EXEC_FILES
     block_id.cpp
     block_manager_metrics.cpp
     block_manager.cpp
     fs_util.cpp
-    file_block_manager.cpp
+    file_block_manager.cpp)
+
+if (WITH_AWS)
+    set(EXEC_FILES ${EXEC_FILES}
+        s3_block_manager.cpp
+    )
+endif()
+
+add_library(OlapFs STATIC
+    ${EXEC_FILES}
 )

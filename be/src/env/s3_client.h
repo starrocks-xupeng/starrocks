@@ -19,6 +19,8 @@ public:
 
 class S3Client : public CloudStorageClient {
 public:
+    static S3Client* get_s3_client();
+
     S3Client(const Aws::Client::ClientConfiguration& config, const S3Credential& cred = S3Credential(),
              bool use_transfer_manager = false);
     ~S3Client();
@@ -58,6 +60,16 @@ public:
 
     virtual Status list_objects(const std::string& bucket_name, const std::string& object_prefix,
                                 std::vector<std::string>* result) override;
+
+    Status create_multipart_upload(const std::string& bucket_name, const std::string& object_key,
+                                   Aws::String* multipart_upload_id);
+
+    Status upload_part(const std::string& bucket_name, const std::string& object_key,
+                       const Aws::String& multipart_upload_id, std::shared_ptr<Aws::StringStream> stream,
+                       std::vector<Aws::String>* part_tags);
+
+    Status complete_multipart_upload(const std::string& bucket_name, const std::string& object_key,
+                       const Aws::String& multipart_upload_id, const std::vector<Aws::String>& part_tags);
 
 private:
     // transfer manager's thread pool.
