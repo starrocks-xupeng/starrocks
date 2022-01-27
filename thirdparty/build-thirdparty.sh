@@ -734,6 +734,24 @@ build_aliyun_oss_jars() {
     cp -r $TP_SOURCE_DIR/$ALIYUN_OSS_JARS_SOURCE $TP_INSTALL_DIR/aliyun_oss_jars
 }
 
+build_aws_cpp_sdk() {
+    check_if_source_exist $AWS_SDK_CPP_SOURCE
+    cd $TP_SOURCE_DIR/$AWS_SDK_CPP_SOURCE
+    # only build s3 and s3-crt, you can add more components if you want.
+    $CMAKE_CMD -Bbuild -DBUILD_ONLY="core;s3;s3-crt;transfer" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_SHARED_LIBS=OFF -DCMAKE_INSTALL_PREFIX=${TP_INSTALL_DIR} -DENABLE_TESTING=OFF
+    cd build
+    make -j$PARALLEL && make install
+}
+
+# aws cpp sdk
+build_aws_cpp_sdk() {
+    check_if_source_exist $AWS_CPP_SDK_SOURCE
+    cd $TP_SOURCE_DIR/$AWS_CPP_SDK_SOURCE
+    mkdir -p build && cd build
+    $CMAKE_CMD .. -DBUILD_ONLY="s3;transfer" -DENABLE_TESTING=OFF -DCMAKE_INSTALL_PREFIX=${TP_INSTALL_DIR}
+    make -j$PARALLEL && make install
+}
+
 build_libevent
 build_zlib
 build_lz4
@@ -769,6 +787,7 @@ build_ragel
 build_hyperscan
 build_mariadb
 build_aliyun_oss_jars
+build_aws_cpp_sdk
 
 if [[ "${MACHINE_TYPE}" != "aarch64" ]]; then
     build_breakpad
