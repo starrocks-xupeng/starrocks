@@ -46,6 +46,7 @@
 #include "service/backend_service.h"
 #include "service/brpc_service.h"
 #include "service/http_service.h"
+#include "service/staros_worker.h"
 #include "storage/options.h"
 #include "storage/storage_engine.h"
 #include "util/debug_util.h"
@@ -284,11 +285,19 @@ int main(int argc, char** argv) {
         LOG(INFO) << "StarRocks BE HeartBeat Service started correctly.";
     }
 
+#ifdef USE_STAROS
+    starrocks::init_staros_worker();
+#endif
+
     while (!starrocks::k_starrocks_exit) {
         sleep(10);
     }
     daemon->stop();
     daemon.reset();
+
+#ifdef USE_STAROS
+    starrocks::shutdown_staros_worker();
+#endif
 
     Aws::ShutdownAPI(aws_sdk_options);
 

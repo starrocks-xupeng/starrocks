@@ -702,6 +702,10 @@ CONF_Int64(send_rpc_runtime_filter_timeout_ms, "1000");
 
 // enable optimized implementation of schema change
 CONF_Bool(enable_schema_change_v2, "true");
+#ifdef USE_STAROS
+CONF_String(starmgr_addr, "");
+CONF_Int32(starlet_port, "12345");
+#endif
 
 } // namespace config
 

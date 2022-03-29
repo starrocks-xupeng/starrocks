@@ -23,12 +23,14 @@
 
 #include "storage/data_dir.h"
 #include "util/path_util.h"
+#ifdef USE_STAROS
+#include "service/staros_worker.h"
+#endif
 
 namespace starrocks {
 
 BaseTablet::BaseTablet(const TabletMetaSharedPtr& tablet_meta, DataDir* data_dir)
         : _state(tablet_meta->tablet_state()), _tablet_meta(tablet_meta), _data_dir(data_dir) {
-    _gen_tablet_path();
 }
 
 Status BaseTablet::set_tablet_state(TabletState state) {
@@ -44,18 +46,42 @@ Status BaseTablet::set_tablet_state(TabletState state) {
     return Status::OK();
 }
 
-void BaseTablet::_gen_tablet_path() {
-    if (_data_dir != nullptr) {
-        std::string path = _data_dir->path() + DATA_PREFIX;
-        path = path_util::join_path_segments(path, std::to_string(_tablet_meta->shard_id()));
-        path = path_util::join_path_segments(path, std::to_string(_tablet_meta->tablet_id()));
-        path = path_util::join_path_segments(path, std::to_string(_tablet_meta->schema_hash()));
-        _tablet_path = path;
+std::string BaseTablet::schema_hash_path() const {
+    if (_tablet_meta == nullptr) return "";
+#ifdef USE_STAROS
+    auto shard_info = get_shard_info(_tablet_meta->tablet_id());
+    if (!shard_info.ok()) {
+        LOG(WARNING) << "Fail to get shard#" << _tablet_meta->tablet_id();
+        return "";
     }
+    return fmt::format("{}/{}/{}", shard_info->obj_store_info.uri, _tablet_meta->tablet_id(), _tablet_meta->schema_hash());
+#else
+    if (_data_dir == nullptr) return "";
+    return fmt::format("{}{}/{}/{}/{}",
+           _data_dir->path(),
+           DATA_PREFIX,
+           _tablet_meta->shard_id(),
+          _tablet_meta->tablet_id(),
+          _tablet_meta->schema_hash());
+#endif
 }
 
 std::string BaseTablet::tablet_id_path() const {
-    return _tablet_path.substr(0, _tablet_path.rfind('/'));
+    if (_tablet_meta == nullptr) return "";
+#ifdef USE_STAROS
+    auto shard_info = get_shard_info(_tablet_meta->tablet_id());
+    if (!shard_info.ok()) {
+        LOG(WARNING) << "Fail to get shard#" << _tablet_meta->tablet_id();
+    }
+    return fmt::format("{}/{}", shard_info->obj_store_info.uri, _tablet_meta->tablet_id());
+#else
+    if (_data_dir == nullptr) return "";
+    return fmt::format("{}{}/{}/{}",
+           _data_dir->path(),
+           DATA_PREFIX,
+           _tablet_meta->shard_id(),
+          _tablet_meta->tablet_id());
+#endif
 }
 
 } /* namespace starrocks */

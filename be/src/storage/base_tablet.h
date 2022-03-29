@@ -60,7 +60,7 @@ public:
     //
     // `schema_hash_path()` returns the full path of the directory ${schema_hash}.
     // `tablet_id_path()` returns the full path of the directory ${tablet_id}.
-    const std::string& schema_hash_path() const;
+    std::string schema_hash_path() const;
 
     std::string tablet_id_path() const;
 
@@ -91,13 +91,10 @@ public:
 protected:
     virtual void on_shutdown() {}
 
-    void _gen_tablet_path();
-
     TabletState _state;
     TabletMetaSharedPtr _tablet_meta;
 
     DataDir* _data_dir;
-    std::string _tablet_path; // TODO: remove this variable for less memory occupation
 
 private:
     BaseTablet(const BaseTablet&) = delete;
@@ -106,10 +103,6 @@ private:
 
 inline DataDir* BaseTablet::data_dir() const {
     return _data_dir;
-}
-
-inline const std::string& BaseTablet::schema_hash_path() const {
-    return _tablet_path;
 }
 
 inline const TabletMetaSharedPtr BaseTablet::tablet_meta() {

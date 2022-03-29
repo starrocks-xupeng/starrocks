@@ -24,7 +24,7 @@
 
 BUILD_DIR = ${CURDIR}/../build/
 
-PROTOC = ${STARROCKS_THIRDPARTY}/installed/bin/protoc
+PROTOC = `which protoc`
 
 SOURCES = $(shell find ${CURDIR} -name "*.proto")
 OBJECTS = $(patsubst ${CURDIR}/%.proto, ${BUILD_DIR}/gen_cpp/%.pb.cc, ${SOURCES})

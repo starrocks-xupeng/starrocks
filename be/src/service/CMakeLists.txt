@@ -32,6 +32,7 @@ add_library(Service
     http_service.cpp
     internal_service.cpp
     mem_hook.cpp
+    staros_worker.cpp
 )
 
 add_executable(starrocks_be
