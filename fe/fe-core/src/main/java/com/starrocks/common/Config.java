@@ -1398,7 +1398,7 @@ public class Config extends ConfigBase {
      * Set true if using StarOS to manage tablets, such as storage medium is S3.
      */
     @ConfField
-    public static boolean use_staros = true;
+    public static boolean use_staros = false;
     @ConfField
     public static String starmanager_address = "127.0.0.1:6090";
     /**
