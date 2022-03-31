@@ -236,7 +236,8 @@ Status TabletMeta::create(MemTracker* mem_tracker, const TCreateTabletReq& reque
                            request.__isset.enable_persistent_index ? request.enable_persistent_index : false,
                            col_ordinal_to_unique_id, tablet_uid,
                            request.__isset.tablet_type ? request.tablet_type : TTabletType::TABLET_TYPE_DISK,
-                           rowset_type),
+                           rowset_type,
+                           request.shard_id),
             DeleterWithMemTracker<TabletMeta>(mem_tracker));
     mem_tracker->consume((*tablet_meta)->mem_usage());
     return Status::OK();
@@ -252,7 +253,8 @@ TabletMeta::TabletMeta(int64_t table_id, int64_t partition_id, int64_t tablet_id
                        uint64_t shard_id, const TTabletSchema& tablet_schema, uint32_t next_unique_id,
                        bool enable_persistent_index,
                        const std::unordered_map<uint32_t, uint32_t>& col_ordinal_to_unique_id,
-                       const TabletUid& tablet_uid, TTabletType::type tabletType, RowsetTypePB rowset_type)
+                       const TabletUid& tablet_uid, TTabletType::type tabletType, RowsetTypePB rowset_type,
+                       int64_t staros_shard_id)
         : _tablet_uid(0, 0), _preferred_rowset_type(rowset_type) {
     TabletMetaPB tablet_meta_pb;
     tablet_meta_pb.set_table_id(table_id);
@@ -264,6 +266,7 @@ TabletMeta::TabletMeta(int64_t table_id, int64_t partition_id, int64_t tablet_id
     tablet_meta_pb.set_cumulative_layer_point(-1);
     tablet_meta_pb.set_tablet_state(PB_RUNNING);
     tablet_meta_pb.set_enable_persistent_index(enable_persistent_index);
+    tablet_meta_pb.set_staros_shard_id(staros_shard_id);
     *(tablet_meta_pb.mutable_tablet_uid()) = tablet_uid.to_proto();
     tablet_meta_pb.set_tablet_type(tabletType == TTabletType::TABLET_TYPE_MEMORY ? TabletTypePB::TABLET_TYPE_MEMORY
                                                                                  : TabletTypePB::TABLET_TYPE_DISK);
@@ -433,6 +436,7 @@ void TabletMeta::init_from_pb(TabletMetaPB* ptablet_meta_pb) {
     _creation_time = tablet_meta_pb.creation_time();
     _cumulative_layer_point = tablet_meta_pb.cumulative_layer_point();
     _tablet_uid = TabletUid(tablet_meta_pb.tablet_uid());
+    _staros_shard_id = tablet_meta_pb.staros_shard_id();
     if (tablet_meta_pb.has_tablet_type()) {
         _tablet_type = tablet_meta_pb.tablet_type();
     } else {
@@ -518,6 +522,7 @@ void TabletMeta::to_meta_pb(TabletMetaPB* tablet_meta_pb) {
     tablet_meta_pb->set_creation_time(creation_time());
     tablet_meta_pb->set_cumulative_layer_point(cumulative_layer_point());
     tablet_meta_pb->set_enable_persistent_index(get_enable_persistent_index());
+    tablet_meta_pb->set_staros_shard_id(_staros_shard_id);
     *tablet_meta_pb->mutable_tablet_uid() = tablet_uid().to_proto();
     tablet_meta_pb->set_tablet_type(_tablet_type);
     switch (tablet_state()) {

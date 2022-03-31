@@ -47,14 +47,23 @@ Status BaseTablet::set_tablet_state(TabletState state) {
 }
 
 std::string BaseTablet::schema_hash_path() const {
-    if (_tablet_meta == nullptr) return "";
-#ifdef USE_STAROS
-    auto shard_info = get_shard_info(_tablet_meta->tablet_id());
-    if (!shard_info.ok()) {
-        LOG(WARNING) << "Fail to get shard#" << _tablet_meta->tablet_id();
+    if (_tablet_meta == nullptr) {
         return "";
     }
-    return fmt::format("{}/{}/{}", shard_info->obj_store_info.uri, _tablet_meta->tablet_id(), _tablet_meta->schema_hash());
+#ifdef USE_STAROS
+    auto shard_info = get_shard_info(_tablet_meta->staros_shard_id());
+    if (!shard_info.ok()) {
+        LOG(WARNING) << "Fail to get shard#" << _tablet_meta->staros_shard_id();
+        return "";
+    }
+    if (shard_info->obj_store_info.uri.empty()) {
+        return "";
+    }
+    if (shard_info->obj_store_info.uri.back() != '/') {
+        return fmt::format("{}/{}/{}", shard_info->obj_store_info.uri, _tablet_meta->tablet_id(), _tablet_meta->schema_hash());
+    } else {
+        return fmt::format("{}{}/{}", shard_info->obj_store_info.uri, _tablet_meta->tablet_id(), _tablet_meta->schema_hash());
+    }
 #else
     if (_data_dir == nullptr) return "";
     return fmt::format("{}{}/{}/{}/{}",
@@ -67,13 +76,23 @@ std::string BaseTablet::schema_hash_path() const {
 }
 
 std::string BaseTablet::tablet_id_path() const {
-    if (_tablet_meta == nullptr) return "";
-#ifdef USE_STAROS
-    auto shard_info = get_shard_info(_tablet_meta->tablet_id());
-    if (!shard_info.ok()) {
-        LOG(WARNING) << "Fail to get shard#" << _tablet_meta->tablet_id();
+    if (_tablet_meta == nullptr) {
+        return "";
     }
-    return fmt::format("{}/{}", shard_info->obj_store_info.uri, _tablet_meta->tablet_id());
+#ifdef USE_STAROS
+    auto shard_info = get_shard_info(_tablet_meta->staros_shard_id());
+    if (!shard_info.ok()) {
+        LOG(WARNING) << "Fail to get shard#" << _tablet_meta->staros_shard_id();
+        return "";
+    }
+    if (shard_info->obj_store_info.uri.empty()) {
+        return "";
+    }
+    if (shard_info->obj_store_info.uri.back() != '/') {
+        return fmt::format("{}/{}", shard_info->obj_store_info.uri, _tablet_meta->tablet_id());
+    } else {
+        return fmt::format("{}{}", shard_info->obj_store_info.uri, _tablet_meta->tablet_id());
+    }
 #else
     if (_data_dir == nullptr) return "";
     return fmt::format("{}{}/{}/{}",

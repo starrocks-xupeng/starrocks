@@ -42,11 +42,23 @@ namespace starrocks {
 
 using strings::Substitute;
 
+size_t scheme_pos(const std::string& a) {
+    return a.find("://");
+}
+
 Status FileUtils::create_dir(Env* env, const std::string& path) {
     if (path.empty()) {
         return Status::InvalidArgument(strings::Substitute("Unknown primitive type($0)", path));
     }
-    return env->create_dir_recursive(path);
+    size_t pos = 0;
+    if (path.find("://") != std::string::npos) {
+        pos = path.find("://") + 3;
+    }
+    while ((pos = path.find('/', pos + 1)) != std::string::npos) {
+        auto parent = path.substr(0, pos);
+        RETURN_IF_ERROR(env->create_dir_if_missing(parent));
+    }
+    return env->create_dir_if_missing(path);
 }
 
 Status FileUtils::create_dir(const std::string& path) {

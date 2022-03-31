@@ -120,7 +120,8 @@ public:
     TabletMeta(int64_t table_id, int64_t partition_id, int64_t tablet_id, int32_t schema_hash, uint64_t shard_id,
                const TTabletSchema& tablet_schema, uint32_t next_unique_id, bool enable_persistent_index,
                const std::unordered_map<uint32_t, uint32_t>& col_ordinal_to_unique_id, const TabletUid& tablet_uid,
-               TTabletType::type tabletType, RowsetTypePB roset_type);
+               TTabletType::type tabletType, RowsetTypePB roset_type,
+               int64_t staros_shard_id=-1);
 
     virtual ~TabletMeta() {}
 
@@ -140,11 +141,12 @@ public:
     void to_meta_pb(TabletMetaPB* tablet_meta_pb);
     void to_json(std::string* json_string, json2pb::Pb2JsonOptions& options);
 
-    TabletTypePB tablet_type() const { return _tablet_type; }
-    TabletUid tablet_uid() const;
-    int64_t table_id() const;
-    int64_t partition_id() const;
-    int64_t tablet_id() const;
+    inline TabletTypePB tablet_type() const { return _tablet_type; }
+    inline TabletUid tablet_uid() const;
+    inline int64_t table_id() const;
+    inline int64_t partition_id() const;
+    inline int64_t tablet_id() const;
+    inline int64_t staros_shard_id() const;
     void set_tablet_id(int64_t tablet_id) { _tablet_id = tablet_id; }
     int32_t schema_hash() const;
     int16_t shard_id() const;
@@ -248,6 +250,7 @@ private:
     int64_t _creation_time = 0;
     int64_t _cumulative_layer_point = 0;
     bool _enable_persistent_index = false;
+    int64_t _staros_shard_id = 0;
     TabletUid _tablet_uid;
     TabletTypePB _tablet_type = TabletTypePB::TABLET_TYPE_DISK;
 
@@ -301,6 +304,10 @@ inline int32_t TabletMeta::schema_hash() const {
 
 inline int16_t TabletMeta::shard_id() const {
     return _shard_id;
+}
+
+inline int64_t TabletMeta::staros_shard_id() const {
+    return _staros_shard_id;
 }
 
 inline void TabletMeta::set_shard_id(int32_t shard_id) {
