@@ -6,6 +6,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.staros.client.StarClient;
+import com.staros.client.StarClientException;
 import com.staros.proto.ReplicaInfo;
 import com.staros.proto.ShardInfo;
 import com.staros.proto.WorkerInfo;
@@ -34,7 +35,12 @@ public class StarOSAgent {
     }
 
     public List<Long> createShards(int numShards) {
-        List<ShardInfo> shardInfos = client.createShard(1, numShards);
+        List<ShardInfo> shardInfos = null;
+        try {
+            shardInfos = client.createShard(1, numShards);
+        } catch (StarClientException e) {
+            return null;
+        }
         Preconditions.checkState(shardInfos.size() == numShards);
         return shardInfos.stream().map(shardInfo -> shardInfo.getShardId()).collect(Collectors.toList());
     }
@@ -47,7 +53,12 @@ public class StarOSAgent {
 
     public Set<Long> getBackendIdsByShard(long shardId) {
         Set<Long> backendIds = Sets.newHashSet();
-        List<ShardInfo> shardInfos = client.getShardInfo(1, Lists.newArrayList(shardId));
+        List<ShardInfo> shardInfos = null;
+        try {
+            shardInfos = client.getShardInfo(1, Lists.newArrayList(shardId));
+        } catch (StarClientException e) {
+            return null;
+        }
         Preconditions.checkState(shardInfos.size() == 1);
         List<ReplicaInfo> replicaInfos = shardInfos.get(0).getReplicaInfoList();
         for (ReplicaInfo replicaInfo : replicaInfos) {
