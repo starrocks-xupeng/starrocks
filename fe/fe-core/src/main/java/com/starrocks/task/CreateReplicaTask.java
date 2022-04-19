@@ -86,6 +86,8 @@ public class CreateReplicaTask extends AgentTask {
     // true if this task is created by recover request(See comment of Config.recover_with_empty_tablet)
     private boolean isRecoverTask = false;
 
+    private long shardId = -1;
+
     public CreateReplicaTask(long backendId, long dbId, long tableId, long partitionId, long indexId, long tabletId,
                              short shortKeyColumnCount, int schemaHash, long version,
                              KeysType keysType, TStorageType storageType,
@@ -161,6 +163,10 @@ public class CreateReplicaTask extends AgentTask {
         this.storageFormat = storageFormat;
     }
 
+    public void setShardId(long shardId) {
+        this.shardId = shardId;
+    }
+
     public TCreateTabletReq toThrift() {
         TCreateTabletReq createTabletReq = new TCreateTabletReq();
         createTabletReq.setTablet_id(tabletId);
@@ -226,6 +232,9 @@ public class CreateReplicaTask extends AgentTask {
         }
 
         createTabletReq.setTablet_type(tabletType);
+        if (shardId != -1) {
+            createTabletReq.setShard_id(shardId);
+        }
         return createTabletReq;
     }
 }
