@@ -6,10 +6,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.staros.client.StarClient;
-<<<<<<< HEAD
 import com.staros.client.StarClientException;
-=======
->>>>>>> 437d1a0f7 (Interaction process with StarOS)
 import com.staros.proto.ReplicaInfo;
 import com.staros.proto.ShardInfo;
 import com.staros.proto.WorkerInfo;

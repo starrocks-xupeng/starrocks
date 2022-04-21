@@ -73,7 +73,7 @@ message(STATUS "make test: ${MAKE_TEST}")
 
 option(WITH_GCOV "Build binary with gcov to get code coverage" OFF)
 
-option(USE_STAROS "Use StarOS to manager tablet info" OFF)
+option(USE_STAROS "Use StarOS to manager tablet info" ON)
 
 # Check gcc
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -160,6 +160,31 @@ set_target_properties(pprof PROPERTIES IMPORTED_LOCATION
 add_library(tcmalloc STATIC IMPORTED)
 set_target_properties(tcmalloc PROPERTIES IMPORTED_LOCATION
     ${GPERFTOOLS_HOME}/lib/libtcmalloc.a)
+
+#set(protobuf_MODULE_COMPATIBLE TRUE)
+find_package(protobuf CONFIG REQUIRED)
+message(STATUS "Using protobuf ${protobuf_VERSION}")
+message(STATUS "protobuf include path: ${protobuf_INCLUDE_DIRS}")
+message(STATUS "protobuf libs: ${protobuf_LIBS}")
+#include_directories(${Protobuf_INCLUDE_DIRS})
+
+# Find gRPC installation
+# Looks for gRPCConfig.cmake file installed by gRPC's cmake installation.
+find_package(gRPC CONFIG REQUIRED)
+message(STATUS "Using gRPC ${gRPC_VERSION}")
+get_target_property(gRPC_INCLUDE_DIR gRPC::grpc INTERFACE_INCLUDE_DIRECTORIES)
+include_directories(${gRPC_INCLUDE_DIR})
+set(GRPC_GRPCPP gRPC::grpc++)
+set(REFLECTION gRPC::grpc++_reflection)
+
+find_package(starlet CONFIG REQUIRED)
+message(STATUS "Using starlet ${starlet_VERSION}")
+message(STATUS "starlet inc dir: ${STARLET_INCLUDE_DIRS}")
+message(STATUS "starlet lib dir: ${STARLET_LIBS}")
+include_directories(${STARLET_INCLUDE_DIRS})
+
+add_library(starlet STATIC IMPORTED)
+set_target_properties(starlet PROPERTIES IMPORTED_LOCATION ${STARLET_LIBS}/libstarlet.a)
 
 add_library(gtest STATIC IMPORTED)
 set_target_properties(gtest PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/lib/libgtest.a)
@@ -283,31 +308,31 @@ set_target_properties(velocypack PROPERTIES IMPORTED_LOCATION ${THIRDPARTY_DIR}/
 
 find_program(THRIFT_COMPILER thrift ${CMAKE_SOURCE_DIR}/bin)
 
-if ("${USE_STAROS}" STREQUAL "ON")
-    set(Protobuf_ROOT $ENV{MY_INSTALL_DIR})
-    set(absl_ROOT $ENV{MY_INSTALL_DIR})
-    set(OPENSSL_ROOT_DIR $ENV{STARROCKS_THIRD_PARTY})
-    set(gRPC_ROOT $ENV{MY_INSTALL_DIR})
-
-    find_package(OpenSSL REQUIRED)
-
-    find_package(Protobuf CONFIG REQUIRED)
-    message(STATUS "Using Protobuf ${Protobuf_VERSION}")
-    include_directories(${Protobuf_INCLUDE_DIRS})
-
-    find_package(gRPC CONFIG REQUIRED)
-    message(STATUS "Using gRPC ${gRPC_VERSION}")
-    include_directories(${gRPC_INCLUDE_DIRS})
-
-    add_library(starlet STATIC IMPORTED)
-    set_target_properties(starlet PROPERTIES IMPORTED_LOCATION $ENV{MY_INSTALL_DIR}/lib64/libstarlet.a)
-    set(STARROCKS_DEPENDENCIES
-        ${STARROCKS_DEPENDENCIES}
-        starlet
-        gRPC::grpc++_reflection
-        gRPC::grpc++
-    )
-endif()
+#if ("${USE_STAROS}" STREQUAL "ON")
+#    set(Protobuf_ROOT $ENV{MY_INSTALL_DIR})
+#    set(absl_ROOT $ENV{MY_INSTALL_DIR})
+#    set(OPENSSL_ROOT_DIR $ENV{STARROCKS_THIRD_PARTY})
+#    set(gRPC_ROOT $ENV{MY_INSTALL_DIR})
+#
+#    find_package(OpenSSL REQUIRED)
+#
+#    find_package(Protobuf CONFIG REQUIRED)
+#    message(STATUS "Using Protobuf ${Protobuf_VERSION}")
+#    include_directories(${Protobuf_INCLUDE_DIRS})
+#
+#    find_package(gRPC CONFIG REQUIRED)
+#    message(STATUS "Using gRPC ${gRPC_VERSION}")
+#    include_directories(${gRPC_INCLUDE_DIRS})
+#
+#    add_library(starlet STATIC IMPORTED)
+#    set_target_properties(starlet PROPERTIES IMPORTED_LOCATION $ENV{MY_INSTALL_DIR}/lib64/libstarlet.a)
+#    set(STARROCKS_DEPENDENCIES
+#        ${STARROCKS_DEPENDENCIES}
+#        starlet
+#        gRPC::grpc++_reflection
+#        gRPC::grpc++
+#    )
+#endif()
 
 set(AWSSDK_COMMON_RUNTIME_LIBS "aws-crt-cpp;aws-c-auth;aws-c-cal;aws-c-common;aws-c-compression;aws-c-event-stream;aws-c-http;aws-c-io;aws-c-mqtt;aws-c-s3;aws-checksums;s2n")
 foreach(lib IN ITEMS ${AWSSDK_COMMON_RUNTIME_LIBS})
@@ -523,6 +548,9 @@ set(STARROCKS_DEPENDENCIES ${STARROCKS_DEPENDENCIES}
 set(STARROCKS_DEPENDENCIES
     ${STARROCKS_DEPENDENCIES}
     ${WL_START_GROUP}
+    starlet
+    ${GRPC_GRPCPP}
+    ${REFLECTION}
     rocksdb
     libs2
     snappy

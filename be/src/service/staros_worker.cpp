@@ -7,7 +7,7 @@
 #include <mutex>
 #include <unordered_map>
 
-#include <starlet/worker.h>
+#include "worker.h"
 
 #include "common/config.h"
 #include "common/logging.h"
@@ -20,11 +20,11 @@ public:
     using ShardInfo = staros::starlet::ShardInfo;
     using WorkerInfo = staros::starlet::WorkerInfo;
 
-    staros::starlet::Status add_shard(const ShardInfo& shard) override; 
+    absl::Status add_shard(const ShardInfo& shard) override; 
 
-    staros::starlet::Status remove_shard(const ShardId shard) override; 
+    absl::Status remove_shard(const ShardId shard) override; 
 
-    staros::starlet::StatusOr<WorkerInfo> worker_info() override;
+    absl::StatusOr<WorkerInfo> worker_info() override;
 
     StatusOr<ShardInfo> get_shard_info(ShardId id);
 
@@ -37,18 +37,18 @@ std::ostream& operator<<(std::ostream& os, const staros::starlet::ShardInfo& sha
     return os << "Shard{.id=" << shard.id << " .uri=" << shard.obj_store_info.uri << "}";
 }
 
-staros::starlet::Status StarOSWorker::add_shard(const ShardInfo& shard) {
+absl::Status StarOSWorker::add_shard(const ShardInfo& shard) {
     LOG(INFO) << "Adding " << shard;
     std::lock_guard l(_mtx);
     _shards[shard.id] = shard;
-    return staros::starlet::Status::OK();
+    return absl::OkStatus();
 }
 
-staros::starlet::Status StarOSWorker::remove_shard(const ShardId id) {
+absl::Status StarOSWorker::remove_shard(const ShardId id) {
     LOG(INFO) << "Removing " << id;
     std::lock_guard l(_mtx);
     _shards.erase(id);
-    return staros::starlet::Status::OK();
+    return absl::OkStatus();
 }
 
 StatusOr<staros::starlet::ShardInfo> StarOSWorker::get_shard_info(ShardId id) {
@@ -60,7 +60,8 @@ StatusOr<staros::starlet::ShardInfo> StarOSWorker::get_shard_info(ShardId id) {
     return it->second;
 }
 
-staros::starlet::StatusOr<staros::starlet::WorkerInfo> StarOSWorker::worker_info() {
+absl::StatusOr<staros::starlet::WorkerInfo> StarOSWorker::worker_info() {
+    LOG(INFO) << "REPORT " << config::starlet_port;
     staros::starlet::WorkerInfo worker_info;
     worker_info.worker_id = 1;
     worker_info.properties["port"] = std::to_string(config::starlet_port);
@@ -75,12 +76,14 @@ std::shared_ptr<StarOSWorker> g_worker;
 staros::starlet::Starlet* g_starlet;
 
 void init_staros_worker() {
+     LOG(INFO) << "INIT STAROS WORKER " << config::starmgr_addr << " " << config::starlet_port;
      if (g_starlet != nullptr) return;
      g_worker = std::make_shared<StarOSWorker>();
      g_starlet = new staros::starlet::Starlet(g_worker);
      g_starlet->init(config::starlet_port);
      g_starlet->set_star_mgr_addr(config::starmgr_addr);
      g_starlet->start();
+     LOG(INFO) << "INIT STAROS WORKER " << config::starmgr_addr << " " << config::starlet_port;
 }
 
 void shutdown_staros_worker() {

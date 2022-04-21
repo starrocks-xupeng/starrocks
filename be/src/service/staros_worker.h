@@ -4,7 +4,7 @@
 
 #ifdef USE_STAROS
 
-#include <starlet/starlet.h>
+#include "starlet.h"
 
 #include "common/statusor.h"
 
