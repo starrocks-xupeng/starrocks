@@ -27,7 +27,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Queues;
 import com.google.common.collect.Range;
 import com.starrocks.alter.Alter;
 import com.starrocks.alter.AlterJob;
@@ -151,6 +150,7 @@ import com.starrocks.ha.BDBHA;
 import com.starrocks.ha.FrontendNodeType;
 import com.starrocks.ha.HAProtocol;
 import com.starrocks.ha.MasterInfo;
+import com.starrocks.ha.StateChangeExecutor;
 import com.starrocks.journal.Journal;
 import com.starrocks.journal.JournalCursor;
 import com.starrocks.journal.JournalEntity;
@@ -262,7 +262,6 @@ public class GlobalStateMgr {
     private static final Logger LOG = LogManager.getLogger(GlobalStateMgr.class);
     // 0 ~ 9999 used for qe
     public static final long NEXT_ID_INIT_VALUE = 10000;
-    private static final int STATE_CHANGE_CHECK_INTERVAL_MS = 100;
     private static final int REPLAY_INTERVAL_MS = 1;
     private static final String IMAGE_DIR = "/image";
 
@@ -297,7 +296,6 @@ public class GlobalStateMgr {
     private JournalWriter journalWriter; // master only: write journal log
     private Daemon replayer;
     private Daemon timePrinter;
-    private Daemon listener;
     private EsRepository esRepository;  // it is a daemon, so add it here
     private StarRocksRepository starRocksRepository;
     private HiveRepository hiveRepository;
@@ -311,7 +309,6 @@ public class GlobalStateMgr {
     // canRead can be true even if isReady is false.
     // for example: OBSERVER transfer to UNKNOWN, then isReady will be set to false, but canRead can still be true
     private AtomicBoolean canRead = new AtomicBoolean(false);
-    private BlockingQueue<FrontendNodeType> typeTransferQueue;
 
     // false if default_cluster is not created.
     private boolean isDefaultClusterCreated = false;
@@ -491,7 +488,6 @@ public class GlobalStateMgr {
         this.replayedJournalId = new AtomicLong(0L);
         this.synchronizedTimeMs = 0;
         this.feType = FrontendNodeType.INIT;
-        this.typeTransferQueue = Queues.newLinkedBlockingDeque();
 
         this.journalObservable = new JournalObservable();
 
@@ -823,9 +819,8 @@ public class GlobalStateMgr {
         // 6. start task cleaner thread
         createTaskCleaner();
 
-        // 7. start state listener thread
-        createStateListener();
-        listener.start();
+        // 7. set meta context to state change executor
+        StateChangeExecutor.getInstance().setMetaContext(metaContext);
     }
 
     protected void initJournal() throws JournalException, InterruptedException {
@@ -866,7 +861,7 @@ public class GlobalStateMgr {
         }
     }
 
-    private void transferToMaster(FrontendNodeType oldType) {
+    public void transferToMaster(FrontendNodeType oldType) {
         // stop replayer
         if (replayer != null) {
             replayer.exit();
@@ -1040,7 +1035,7 @@ public class GlobalStateMgr {
         domainResolver.start();
     }
 
-    private void transferToNonMaster(FrontendNodeType newType) {
+    public void transferToNonMaster(FrontendNodeType newType) {
         isReady.set(false);
 
         if (feType == FrontendNodeType.OBSERVER || feType == FrontendNodeType.FOLLOWER) {
@@ -1553,121 +1548,6 @@ public class GlobalStateMgr {
             canRead.set(true);
             isReady.set(true);
         }
-    }
-
-    public void notifyNewFETypeTransfer(FrontendNodeType newType) {
-        try {
-            String msg = "notify new FE type transfer: " + newType;
-            LOG.warn(msg);
-            Util.stdoutWithTime(msg);
-            this.typeTransferQueue.put(newType);
-        } catch (InterruptedException e) {
-            LOG.error("failed to put new FE type: {}", newType, e);
-        }
-    }
-
-    public void createStateListener() {
-        listener = new Daemon("stateListener", STATE_CHANGE_CHECK_INTERVAL_MS) {
-            @Override
-            protected synchronized void runOneCycle() {
-
-                while (true) {
-                    FrontendNodeType newType = null;
-                    try {
-                        newType = typeTransferQueue.take();
-                    } catch (InterruptedException e) {
-                        LOG.error("got exception when take FE type from queue", e);
-                        Util.stdoutWithTime("got exception when take FE type from queue. " + e.getMessage());
-                        System.exit(-1);
-                    }
-                    Preconditions.checkNotNull(newType);
-                    LOG.info("begin to transfer FE type from {} to {}", feType, newType);
-                    if (feType == newType) {
-                        return;
-                    }
-
-                    /*
-                     * INIT -> MASTER: transferToMaster
-                     * INIT -> FOLLOWER/OBSERVER: transferToNonMaster
-                     * UNKNOWN -> MASTER: transferToMaster
-                     * UNKNOWN -> FOLLOWER/OBSERVER: transferToNonMaster
-                     * FOLLOWER -> MASTER: transferToMaster
-                     * FOLLOWER/OBSERVER -> INIT/UNKNOWN: set isReady to false
-                     */
-                    switch (feType) {
-                        case INIT: {
-                            switch (newType) {
-                                case MASTER: {
-                                    transferToMaster(feType);
-                                    break;
-                                }
-                                case FOLLOWER:
-                                case OBSERVER: {
-                                    transferToNonMaster(newType);
-                                    break;
-                                }
-                                case UNKNOWN:
-                                    break;
-                                default:
-                                    break;
-                            }
-                            break;
-                        }
-                        case UNKNOWN: {
-                            switch (newType) {
-                                case MASTER: {
-                                    transferToMaster(feType);
-                                    break;
-                                }
-                                case FOLLOWER:
-                                case OBSERVER: {
-                                    transferToNonMaster(newType);
-                                    break;
-                                }
-                                default:
-                                    break;
-                            }
-                            break;
-                        }
-                        case FOLLOWER: {
-                            switch (newType) {
-                                case MASTER: {
-                                    transferToMaster(feType);
-                                    break;
-                                }
-                                case UNKNOWN: {
-                                    transferToNonMaster(newType);
-                                    break;
-                                }
-                                default:
-                                    break;
-                            }
-                            break;
-                        }
-                        case OBSERVER: {
-                            if (newType == FrontendNodeType.UNKNOWN) {
-                                transferToNonMaster(newType);
-                            }
-                            break;
-                        }
-                        case MASTER: {
-                            // exit if master changed to any other type
-                            String msg = "transfer FE type from MASTER to " + newType.name() + ". exit";
-                            LOG.error(msg);
-                            Util.stdoutWithTime(msg);
-                            System.exit(-1);
-                        }
-                        default:
-                            break;
-                    } // end switch formerFeType
-
-                    feType = newType;
-                    LOG.info("finished to transfer FE type to {}", feType);
-                }
-            } // end runOneCycle
-        };
-
-        listener.setMetaContext(metaContext);
     }
 
     public synchronized boolean replayJournal(long toJournalId) throws JournalException {
@@ -2322,6 +2202,10 @@ public class GlobalStateMgr {
         return journal;
     }
 
+    public CatalogIdGenerator getIdGenerator() {
+        return idGenerator;
+    }
+
     // Get the next available, need't lock because of nextId is atomic.
     public long getNextId() {
         return idGenerator.getNextId();
@@ -2445,6 +2329,10 @@ public class GlobalStateMgr {
 
     public FrontendNodeType getFeType() {
         return this.feType;
+    }
+
+    public void setFeType(FrontendNodeType feType) {
+        this.feType = feType;
     }
 
     public int getMasterRpcPort() {

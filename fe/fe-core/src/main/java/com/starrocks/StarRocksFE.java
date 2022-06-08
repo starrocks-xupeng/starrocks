@@ -29,6 +29,7 @@ import com.starrocks.common.Log4jConfig;
 import com.starrocks.common.ThreadPoolManager;
 import com.starrocks.common.Version;
 import com.starrocks.common.util.JdkUtils;
+import com.starrocks.ha.StateChangeExecutor;
 import com.starrocks.http.HttpServer;
 import com.starrocks.journal.Journal;
 import com.starrocks.journal.bdbje.BDBEnvironment;
@@ -40,6 +41,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.ExecuteEnv;
 import com.starrocks.service.FeServer;
 import com.starrocks.service.FrontendOptions;
+import com.starrocks.staros.StarMgrServer;
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -110,6 +112,18 @@ public class StarRocksFE {
 
             // init globalStateMgr and wait it be ready
             GlobalStateMgr.getCurrentState().initialize(args);
+            if (Config.integrate_starmgr) {
+                Journal journal = GlobalStateMgr.getCurrentState().getJournal();
+                if (journal instanceof BDBJEJournal) {
+                    BDBEnvironment bdbEnvironment = ((BDBJEJournal) journal).getBdbEnvironment();
+                    StarMgrServer.getCurrentState().initialize(bdbEnvironment,
+                            GlobalStateMgr.getCurrentState().getImageDir());
+                } else {
+                    LOG.error("journal type should be BDBJE for star mgr!");
+                    System.exit(-1);
+                }
+            }
+            StateChangeExecutor.getInstance().start();
             GlobalStateMgr.getCurrentState().waitForReady();
 
             FrontendOptions.saveStartType();

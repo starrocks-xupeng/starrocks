@@ -51,20 +51,31 @@ public class BDBJournalCursor implements JournalCursor {
     private List<Long> dbNames;
     private CloseSafeDatabase database;
     private int nextDbPositionIndex;
+    private String prefix;
 
     public static BDBJournalCursor getJournalCursor(BDBEnvironment env, long fromKey, long toKey) throws
+            JournalException {
+        return new BDBJournalCursor(env, "", fromKey, toKey);
+    }
+
+    public static BDBJournalCursor getJournalCursor(BDBEnvironment env, String prefix, long fromKey, long toKey) throws
             JournalException {
         if (toKey < fromKey || fromKey < 0) {
             throw new JournalException(String.format("Invalid key range! fromKey %s toKey %s", fromKey, toKey));
         }
-        return new BDBJournalCursor(env, fromKey, toKey);
+        return new BDBJournalCursor(env, prefix, fromKey, toKey);
     }
 
     protected BDBJournalCursor(BDBEnvironment env, long fromKey, long toKey) throws JournalException {
+        this(env, "", fromKey, toKey);
+    }
+
+    protected BDBJournalCursor(BDBEnvironment env, String prefix, long fromKey, long toKey) throws JournalException {
         this.environment = env;
         this.toKey = toKey;
         this.currentKey = fromKey;
-        this.dbNames = env.getDatabaseNames();
+        this.prefix = prefix;
+        this.dbNames = env.getDatabaseNames(prefix);
         if (dbNames == null) {
             throw new JournalException("failed to get db names!");
         }
@@ -109,7 +120,7 @@ public class BDBJournalCursor implements JournalCursor {
                     Thread.sleep(SLEEP_INTERVAL_SEC * 1000);
                 }
 
-                database = environment.openDatabase(dbName);
+                database = environment.openDatabase(prefix + dbName);
                 nextDbPositionIndex++;
                 return;
             } catch (RestartRequiredException e) {

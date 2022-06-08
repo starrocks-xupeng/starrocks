@@ -245,7 +245,8 @@ public class MockedFrontend {
                 };
 
                 GlobalStateMgr.getCurrentState().initialize(args);
-                GlobalStateMgr.getCurrentState().notifyNewFETypeTransfer(FrontendNodeType.MASTER);
+                GlobalStateMgr.getCurrentState().transferToMaster(FrontendNodeType.MASTER);
+                GlobalStateMgr.getCurrentState().setFeType(FrontendNodeType.MASTER);
 
                 GlobalStateMgr.getCurrentState().waitForReady();
 
