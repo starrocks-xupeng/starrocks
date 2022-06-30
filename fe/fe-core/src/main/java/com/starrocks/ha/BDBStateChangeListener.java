@@ -70,6 +70,7 @@ public class BDBStateChangeListener implements StateChangeListener {
             }
         }
         Preconditions.checkNotNull(newType);
+        // StarMgrServer.getCurrentState().notifyNewTypeTransfer(newType);
         GlobalStateMgr.getCurrentState().notifyNewFETypeTransfer(newType);
     }
 

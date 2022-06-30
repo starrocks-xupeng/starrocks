@@ -40,6 +40,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.ExecuteEnv;
 import com.starrocks.service.FeServer;
 import com.starrocks.service.FrontendOptions;
+import com.starrocks.staros.StarMgrServer;
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -110,6 +111,14 @@ public class StarRocksFE {
 
             // init globalStateMgr and wait it be ready
             GlobalStateMgr.getCurrentState().initialize(args);
+            Journal journal = GlobalStateMgr.getCurrentState().getJournal();
+            if (journal instanceof BDBJEJournal) {
+                BDBEnvironment bdbEnvironment = ((BDBJEJournal) journal).getBdbEnvironment();
+                StarMgrServer.getCurrentState().initialize(bdbEnvironment);
+            } else {
+                LOG.error("journal type should be BDBJE!");
+                System.exit(-1);
+            }
             GlobalStateMgr.getCurrentState().waitForReady();
 
             FrontendOptions.saveStartType();

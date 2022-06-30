@@ -71,6 +71,7 @@ import com.starrocks.scheduler.persist.TaskRunStatusChange;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.LocalMetastore;
 import com.starrocks.staros.StarMgrJournal;
+import com.starrocks.staros.StarMgrServer;
 import com.starrocks.statistic.AnalyzeJob;
 import com.starrocks.statistic.AnalyzeStatus;
 import com.starrocks.statistic.BasicStatsMeta;
@@ -883,7 +884,7 @@ public class EditLog {
                 }
                 case OperationType.OP_STARMGR: {
                     StarMgrJournal j = (StarMgrJournal) journal.getData();
-                    globalStateMgr.getStarMgr().replay(j.getJournal());
+                    StarMgrServer.getCurrentState().getStarMgr().replay(j.getJournal());
                     break;
                 }
                 default: {

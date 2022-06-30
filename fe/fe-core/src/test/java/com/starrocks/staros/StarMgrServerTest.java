@@ -78,7 +78,7 @@ public class StarMgrServerTest {
         Assert.assertEquals(manager, starMgrServer.getStarMgr());
 
         try {
-            starMgrServer.start(null, null);
+            starMgrServer.initialize(null);
         } catch (IOException e) {
         }
 
@@ -95,11 +95,5 @@ public class StarMgrServerTest {
         };
 
         Assert.assertEquals(manager, starMgrServer.getStarMgr());
-
-        try {
-            globalStateMgr.saveStarMgrMeta(null, 0);
-            globalStateMgr.loadStarMgrMeta(null, 0);
-        } catch (IOException e) {
-        }
     }
 }

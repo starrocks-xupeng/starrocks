@@ -29,7 +29,6 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Queues;
 import com.google.common.collect.Range;
-import com.staros.manager.StarManager;
 import com.starrocks.alter.Alter;
 import com.starrocks.alter.AlterJob;
 import com.starrocks.alter.AlterJob.JobType;
@@ -412,8 +411,6 @@ public class GlobalStateMgr {
     private LocalMetastore localMetastore;
     private NodeMgr nodeMgr;
 
-    private StarMgrServer starMgrServer;
-
     public List<Frontend> getFrontends(FrontendNodeType nodeType) {
         return nodeMgr.getFrontends(nodeType);
     }
@@ -573,7 +570,6 @@ public class GlobalStateMgr {
         this.catalogMgr = new CatalogMgr(connectorMgr);
         this.taskManager = new TaskManager();
         this.insertOverwriteJobManager = new InsertOverwriteJobManager();
-        this.starMgrServer = new StarMgrServer();
     }
 
     public static void destroyCheckpoint() {
@@ -832,10 +828,7 @@ public class GlobalStateMgr {
         // 6. start task cleaner thread
         createTaskCleaner();
 
-        // 7. start starMgr server, must do this before 8
-        startStarMgrServer();
-
-        // 8. start state listener thread
+        // 7. start state listener thread
         createStateListener();
         listener.start();
     }
@@ -1027,13 +1020,11 @@ public class GlobalStateMgr {
         statisticAutoCollector.start();
         taskManager.start();
         taskCleaner.start();
-        if (Config.integrate_starmgr) {
-            starMgrServer.startBackgroundThreads();
-
-            // register service to starMgr
-            int clusterId = getCurrentState().getClusterId();
-            getStarOSAgent().registerAndBootstrapService(Integer.toString(clusterId));
-        }
+        //if (Config.integrate_starmgr) {
+        //    // register service to starMgr
+        //    int clusterId = getCurrentState().getClusterId();
+        //    getStarOSAgent().registerAndBootstrapService(Integer.toString(clusterId));
+        //}
     }
 
     // start threads that should running on all FE
@@ -1087,10 +1078,6 @@ public class GlobalStateMgr {
         if (replayer == null) {
             createReplayer();
             replayer.start();
-        }
-
-        if (Config.integrate_starmgr) {
-            starMgrServer.stopBackgroundThreads();
         }
 
         startNonMasterDaemonThreads();
@@ -1157,8 +1144,6 @@ public class GlobalStateMgr {
             remoteChecksum = dis.readLong();
             checksum = loadInsertOverwriteJobs(dis, checksum);
             checksum = nodeMgr.loadComputeNodes(dis, checksum);
-            remoteChecksum = dis.readLong();
-            checksum = loadStarMgrMeta(dis, checksum);
             remoteChecksum = dis.readLong();
         } catch (EOFException exception) {
             LOG.warn("load image eof.", exception);
@@ -1340,16 +1325,6 @@ public class GlobalStateMgr {
         return checksum;
     }
 
-    public long saveStarMgrMeta(DataOutputStream dos, long checksum) throws IOException {
-        starMgrServer.dumpMeta(dos);
-        return checksum;
-    }
-
-    public long loadStarMgrMeta(DataInputStream dis, long checksum) throws IOException {
-        starMgrServer.loadMeta(dis);
-        return checksum;
-    }
-
     public long loadResources(DataInputStream in, long checksum) throws IOException {
         if (GlobalStateMgr.getCurrentStateJournalVersion() >= FeMetaVersion.VERSION_87) {
             resourceMgr = ResourceMgr.read(in);
@@ -1419,8 +1394,6 @@ public class GlobalStateMgr {
             dos.writeLong(checksum);
             checksum = saveInsertOverwriteJobs(dos, checksum);
             checksum = nodeMgr.saveComputeNodes(dos, checksum);
-            dos.writeLong(checksum);
-            checksum = saveStarMgrMeta(dos, checksum);
             dos.writeLong(checksum);
         }
 
@@ -1636,11 +1609,13 @@ public class GlobalStateMgr {
                             switch (newType) {
                                 case MASTER: {
                                     transferToMaster(feType);
+                                    StarMgrServer.getCurrentState().startBackgroundThreads();
                                     break;
                                 }
                                 case FOLLOWER:
                                 case OBSERVER: {
                                     transferToNonMaster(newType);
+                                    StarMgrServer.getCurrentState().stopBackgroundThreads();
                                     break;
                                 }
                                 case UNKNOWN:
@@ -1654,11 +1629,13 @@ public class GlobalStateMgr {
                             switch (newType) {
                                 case MASTER: {
                                     transferToMaster(feType);
+                                    StarMgrServer.getCurrentState().startBackgroundThreads();
                                     break;
                                 }
                                 case FOLLOWER:
                                 case OBSERVER: {
                                     transferToNonMaster(newType);
+                                    StarMgrServer.getCurrentState().stopBackgroundThreads();
                                     break;
                                 }
                                 default:
@@ -1670,10 +1647,12 @@ public class GlobalStateMgr {
                             switch (newType) {
                                 case MASTER: {
                                     transferToMaster(feType);
+                                    StarMgrServer.getCurrentState().startBackgroundThreads();
                                     break;
                                 }
                                 case UNKNOWN: {
                                     transferToNonMaster(newType);
+                                    StarMgrServer.getCurrentState().stopBackgroundThreads();
                                     break;
                                 }
                                 default:
@@ -1684,6 +1663,7 @@ public class GlobalStateMgr {
                         case OBSERVER: {
                             if (newType == FrontendNodeType.UNKNOWN) {
                                 transferToNonMaster(newType);
+                                StarMgrServer.getCurrentState().stopBackgroundThreads();
                             }
                             break;
                         }
@@ -2353,6 +2333,10 @@ public class GlobalStateMgr {
 
     public Journal getJournal() {
         return journal;
+    }
+
+    public CatalogIdGenerator getIdGenerator() {
+        return idGenerator;
     }
 
     // Get the next available, need't lock because of nextId is atomic.
@@ -3170,26 +3154,6 @@ public class GlobalStateMgr {
             taskManager.removeExpiredTaskRuns();
         } catch (Throwable t) {
             LOG.warn("task manager clean expire task runs history failed", t);
-        }
-    }
-
-    public StarManager getStarMgr() {
-        if (!Config.integrate_starmgr) {
-            LOG.fatal("FE not integrated with starmgr!");
-            System.exit(-1);
-        }
-        return starMgrServer.getStarMgr();
-    }
-
-    private void startStarMgrServer() {
-        if (!Config.integrate_starmgr) {
-            return;
-        }
-        try {
-            starMgrServer.start(editLog, idGenerator);
-        } catch (Exception e) {
-            LOG.fatal("start star manager failed, {}.", e.getMessage());
-            System.exit(-1);
         }
     }
 }
