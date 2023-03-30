@@ -403,9 +403,13 @@ if ("${USE_STAROS}" STREQUAL "ON")
     add_library(starlet_fslib_all STATIC IMPORTED GLOBAL)
     set_target_properties(starlet_fslib_all PROPERTIES IMPORTED_LOCATION ${STARLET_LIBS}/libstarlet_fslib_all.a)
 
+    #add_library(starcache STATIC IMPORTED GLOBAL)
+    #set_target_properties(starcache PROPERTIES IMPORTED_LOCATION ${STARLET_LIBS}/libstarcache.a)
+
     set(STARROCKS_DEPENDENCIES
        ${STARROCKS_DEPENDENCIES}
        starlet
+       starcache
        gRPC::grpc++_reflection
        gRPC::grpc++
        starlet_fslib_all
