@@ -267,25 +267,45 @@ struct OlapReaderStatistics {
     int64_t pages_from_local_disk = 0;
 
     int64_t compressed_bytes_read_local_disk = 0;
+    int64_t compressed_bytes_read_cache = 0;
+    int64_t compressed_bytes_read_cache_memory = 0;
+    int64_t compressed_bytes_read_cache_disk = 0;
+    int64_t compressed_bytes_read_tablet = 0;
+    int64_t compressed_bytes_read_segment = 0;
     int64_t compressed_bytes_read_remote = 0;
     // bytes read requested from be, same as compressed_bytes_read for local tablet
     int64_t compressed_bytes_read_request = 0;
 
     int64_t io_count = 0;
     int64_t io_count_local_disk = 0;
+    int64_t io_count_cache = 0;
+    int64_t io_count_meta = 0;
+    int64_t io_count_tablet = 0;
+    int64_t io_count_segment = 0;
     int64_t io_count_remote = 0;
     int64_t io_count_request = 0;
 
     int64_t io_ns_local_disk = 0;
+    int64_t io_ns_cache = 0;
     int64_t io_ns_remote = 0;
     // ------ for lake tablet ------
 };
 
 const char* const kBytesReadLocalDisk = "bytes_read_local_disk";
+const char* const kBytesReadCache = "bytes_read_cache";
+const char* const kBytesReadCacheMemory = "bytes_read_cache_memory";
+const char* const kBytesReadCacheDisk = "bytes_read_cache_disk";
+const char* const kBytesReadTablet = "bytes_read_tablet";
+const char* const kBytesReadSegment = "bytes_read_segment";
 const char* const kBytesReadRemote = "bytes_read_remote";
 const char* const kIOCountLocalDisk = "io_count_local_disk";
+const char* const kIOCountCache = "io_count_cache";
+const char* const kIOCountMeta = "io_count_meta";
+const char* const kIOCountTablet = "io_count_tablet";
+const char* const kIOCountSegment = "io_count_segment";
 const char* const kIOCountRemote = "io_count_remote";
 const char* const kIONsLocalDisk = "io_ns_local_disk";
+const char* const kIONsCache = "io_ns_cache";
 const char* const kIONsRemote = "io_ns_remote";
 
 typedef uint32_t ColumnId;

@@ -144,16 +144,26 @@ private:
     RuntimeProfile::Counter* _pages_count_total_counter = nullptr;
     // Compressed bytes read
     RuntimeProfile::Counter* _compressed_bytes_read_local_disk_counter = nullptr;
+    RuntimeProfile::Counter* _compressed_bytes_read_cache_counter = nullptr;
+    RuntimeProfile::Counter* _compressed_bytes_read_cache_memory_counter = nullptr;
+    RuntimeProfile::Counter* _compressed_bytes_read_cache_disk_counter = nullptr;
+    RuntimeProfile::Counter* _compressed_bytes_read_tablet_counter = nullptr;
+    RuntimeProfile::Counter* _compressed_bytes_read_segment_counter = nullptr;
     RuntimeProfile::Counter* _compressed_bytes_read_remote_counter = nullptr;
     RuntimeProfile::Counter* _compressed_bytes_read_total_counter = nullptr;
     RuntimeProfile::Counter* _compressed_bytes_read_request_counter = nullptr;
     // IO count
     RuntimeProfile::Counter* _io_count_local_disk_counter = nullptr;
+    RuntimeProfile::Counter* _io_count_cache_counter = nullptr;
+    RuntimeProfile::Counter* _io_count_meta_counter = nullptr;
+    RuntimeProfile::Counter* _io_count_tablet_counter = nullptr;
+    RuntimeProfile::Counter* _io_count_segment_counter = nullptr;
     RuntimeProfile::Counter* _io_count_remote_counter = nullptr;
     RuntimeProfile::Counter* _io_count_total_counter = nullptr;
     RuntimeProfile::Counter* _io_count_request_counter = nullptr;
     // IO time
     RuntimeProfile::Counter* _io_ns_local_disk_timer = nullptr;
+    RuntimeProfile::Counter* _io_ns_cache_timer = nullptr;
     RuntimeProfile::Counter* _io_ns_remote_timer = nullptr;
     RuntimeProfile::Counter* _io_ns_total_timer = nullptr;
 };
@@ -548,6 +558,16 @@ void LakeDataSource::init_counter(RuntimeState* state) {
     // Compressed bytes read
     _compressed_bytes_read_local_disk_counter =
             ADD_CHILD_COUNTER(_runtime_profile, "CompressedBytesReadLocalDisk", TUnit::BYTES, "IOStatistics");
+    _compressed_bytes_read_cache_counter =
+            ADD_CHILD_COUNTER(_runtime_profile, "CompressedBytesReadCache", TUnit::BYTES, "IOStatistics");
+    _compressed_bytes_read_cache_memory_counter =
+            ADD_CHILD_COUNTER(_runtime_profile, "CompressedBytesReadCacheMemory", TUnit::BYTES, "IOStatistics");
+    _compressed_bytes_read_cache_disk_counter =
+            ADD_CHILD_COUNTER(_runtime_profile, "CompressedBytesReadCacheDisk", TUnit::BYTES, "IOStatistics");
+    _compressed_bytes_read_tablet_counter =
+            ADD_CHILD_COUNTER(_runtime_profile, "CompressedBytesReadTablet", TUnit::BYTES, "IOStatistics");
+    _compressed_bytes_read_segment_counter =
+            ADD_CHILD_COUNTER(_runtime_profile, "CompressedBytesReadSegment", TUnit::BYTES, "IOStatistics");
     _compressed_bytes_read_remote_counter =
             ADD_CHILD_COUNTER(_runtime_profile, "CompressedBytesReadRemote", TUnit::BYTES, "IOStatistics");
     _compressed_bytes_read_total_counter =
@@ -556,11 +576,16 @@ void LakeDataSource::init_counter(RuntimeState* state) {
             ADD_CHILD_COUNTER(_runtime_profile, "CompressedBytesReadRequest", TUnit::BYTES, "IOStatistics");
     // IO count
     _io_count_local_disk_counter = ADD_CHILD_COUNTER(_runtime_profile, "IOCountLocalDisk", TUnit::UNIT, "IOStatistics");
+    _io_count_cache_counter = ADD_CHILD_COUNTER(_runtime_profile, "IOCountCache", TUnit::UNIT, "IOStatistics");
+    _io_count_meta_counter = ADD_CHILD_COUNTER(_runtime_profile, "IOCountMeta", TUnit::UNIT, "IOStatistics");
+    _io_count_tablet_counter = ADD_CHILD_COUNTER(_runtime_profile, "IOCountTablet", TUnit::UNIT, "IOStatistics");
+    _io_count_segment_counter = ADD_CHILD_COUNTER(_runtime_profile, "IOCountSegment", TUnit::UNIT, "IOStatistics");
     _io_count_remote_counter = ADD_CHILD_COUNTER(_runtime_profile, "IOCountRemote", TUnit::UNIT, "IOStatistics");
     _io_count_total_counter = ADD_CHILD_COUNTER(_runtime_profile, "IOCountTotal", TUnit::UNIT, "IOStatistics");
     _io_count_request_counter = ADD_CHILD_COUNTER(_runtime_profile, "IOCountRequest", TUnit::UNIT, "IOStatistics");
     // IO time
     _io_ns_local_disk_timer = ADD_CHILD_TIMER(_runtime_profile, "IOTimeLocalDisk", "IOStatistics");
+    _io_ns_cache_timer = ADD_CHILD_TIMER(_runtime_profile, "IOTimeCache", "IOStatistics");
     _io_ns_remote_timer = ADD_CHILD_TIMER(_runtime_profile, "IOTimeRemote", "IOStatistics");
     _io_ns_total_timer = ADD_CHILD_TIMER(_runtime_profile, "IOTimeTotal", "IOStatistics");
 }
@@ -646,16 +671,26 @@ void LakeDataSource::update_counter() {
     COUNTER_UPDATE(_pages_count_total_counter, pages_total);
 
     COUNTER_UPDATE(_compressed_bytes_read_local_disk_counter, _reader->stats().compressed_bytes_read_local_disk);
+    COUNTER_UPDATE(_compressed_bytes_read_cache_counter, _reader->stats().compressed_bytes_read_cache);
+    COUNTER_UPDATE(_compressed_bytes_read_cache_memory_counter, _reader->stats().compressed_bytes_read_cache_memory);
+    COUNTER_UPDATE(_compressed_bytes_read_cache_disk_counter, _reader->stats().compressed_bytes_read_cache_disk);
+    COUNTER_UPDATE(_compressed_bytes_read_tablet_counter, _reader->stats().compressed_bytes_read_tablet);
+    COUNTER_UPDATE(_compressed_bytes_read_segment_counter, _reader->stats().compressed_bytes_read_segment);
     COUNTER_UPDATE(_compressed_bytes_read_remote_counter, _reader->stats().compressed_bytes_read_remote);
     COUNTER_UPDATE(_compressed_bytes_read_total_counter, _reader->stats().compressed_bytes_read);
     COUNTER_UPDATE(_compressed_bytes_read_request_counter, _reader->stats().compressed_bytes_read_request);
 
     COUNTER_UPDATE(_io_count_local_disk_counter, _reader->stats().io_count_local_disk);
+    COUNTER_UPDATE(_io_count_cache_counter, _reader->stats().io_count_cache);
+    COUNTER_UPDATE(_io_count_meta_counter, _reader->stats().io_count_meta);
+    COUNTER_UPDATE(_io_count_tablet_counter, _reader->stats().io_count_tablet);
+    COUNTER_UPDATE(_io_count_segment_counter, _reader->stats().io_count_segment);
     COUNTER_UPDATE(_io_count_remote_counter, _reader->stats().io_count_remote);
     COUNTER_UPDATE(_io_count_total_counter, _reader->stats().io_count);
     COUNTER_UPDATE(_io_count_request_counter, _reader->stats().io_count_request);
 
     COUNTER_UPDATE(_io_ns_local_disk_timer, _reader->stats().io_ns_local_disk);
+    COUNTER_UPDATE(_io_ns_cache_timer, _reader->stats().io_ns_cache);
     COUNTER_UPDATE(_io_ns_remote_timer, _reader->stats().io_ns_remote);
     COUNTER_UPDATE(_io_ns_total_timer, _reader->stats().io_ns);
     COUNTER_UPDATE(_io_statistics_timer, _reader->stats().io_ns);

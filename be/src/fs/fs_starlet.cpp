@@ -162,12 +162,22 @@ public:
 
         const auto& read_stats = (*stream_st)->get_read_stats();
         auto stats = std::make_unique<io::NumericStatistics>();
-        stats->reserve(6);
+        stats->reserve(16);
         stats->append(kBytesReadLocalDisk, read_stats.bytes_read_local_disk);
+        stats->append(kBytesReadCache, read_stats.bytes_read_cache);
+        stats->append(kBytesReadCacheMemory, read_stats.bytes_read_cache_memory);
+        stats->append(kBytesReadCacheDisk, read_stats.bytes_read_cache_disk);
+        stats->append(kBytesReadTablet, read_stats.bytes_read_tablet);
+        stats->append(kBytesReadSegment, read_stats.bytes_read_segment);
         stats->append(kBytesReadRemote, read_stats.bytes_read_remote);
         stats->append(kIOCountLocalDisk, read_stats.io_count_local_disk);
+        stats->append(kIOCountCache, read_stats.io_count_cache);
+        stats->append(kIOCountMeta, read_stats.io_count_meta);
+        stats->append(kIOCountTablet, read_stats.io_count_tablet);
+        stats->append(kIOCountSegment, read_stats.io_count_segment);
         stats->append(kIOCountRemote, read_stats.io_count_remote);
         stats->append(kIONsLocalDisk, read_stats.io_ns_local_disk);
+        stats->append(kIONsCache, read_stats.io_ns_cache);
         stats->append(kIONsRemote, read_stats.io_ns_remote);
         return std::move(stats);
     }

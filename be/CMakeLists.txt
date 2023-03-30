@@ -403,6 +403,9 @@ if ("${USE_STAROS}" STREQUAL "ON")
     add_library(starlet STATIC IMPORTED)
     set_target_properties(starlet PROPERTIES IMPORTED_LOCATION ${STARLET_LIBS}/libstarlet.a)
 
+    add_library(starcachelib STATIC IMPORTED)
+    set_target_properties(starcachelib PROPERTIES IMPORTED_LOCATION ${STARLET_LIBS}/libstarcache.a)
+
     find_package (prometheus-cpp CONFIG REQUIRED)
     get_target_property(prometheus-cpp_INCLUDE_DIR prometheus-cpp::core INTERFACE_INCLUDE_DIRECTORIES)
     message(STATUS "Using prometheus-cpp")
@@ -424,6 +427,7 @@ if ("${USE_STAROS}" STREQUAL "ON")
        gRPC::grpc++_reflection
        gRPC::grpc++
        starlet_fslib_all
+       starcachelib
        prometheus-cpp::core
        ${AZURE_SDK_LIB}
        )

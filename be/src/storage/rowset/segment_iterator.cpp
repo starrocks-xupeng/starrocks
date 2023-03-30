@@ -1664,17 +1664,39 @@ void SegmentIterator::_update_stats(RandomAccessFile* rfile) {
         if (name == kBytesReadLocalDisk) {
             _opts.stats->compressed_bytes_read_local_disk += value;
             _opts.stats->compressed_bytes_read += value;
+        } else if (name == kBytesReadCache) {
+            _opts.stats->compressed_bytes_read_cache += value;
+            _opts.stats->compressed_bytes_read += value;
+        } else if (name == kBytesReadCacheMemory) {
+            _opts.stats->compressed_bytes_read_cache_memory += value;
+        } else if (name == kBytesReadCacheDisk) {
+            _opts.stats->compressed_bytes_read_cache_disk += value;
+        } else if (name == kBytesReadTablet) {
+            _opts.stats->compressed_bytes_read_tablet += value;
+        } else if (name == kBytesReadSegment) {
+            _opts.stats->compressed_bytes_read_segment += value;
         } else if (name == kBytesReadRemote) {
             _opts.stats->compressed_bytes_read_remote += value;
             _opts.stats->compressed_bytes_read += value;
         } else if (name == kIOCountLocalDisk) {
             _opts.stats->io_count_local_disk += value;
             _opts.stats->io_count += value;
+        } else if (name == kIOCountCache) {
+            _opts.stats->io_count_cache += value;
+            _opts.stats->io_count += value;
         } else if (name == kIOCountRemote) {
             _opts.stats->io_count_remote += value;
             _opts.stats->io_count += value;
+        } else if (name == kIOCountMeta) {
+            _opts.stats->io_count_meta += value;
+        } else if (name == kIOCountTablet) {
+            _opts.stats->io_count_tablet += value;
+        } else if (name == kIOCountSegment) {
+            _opts.stats->io_count_segment += value;
         } else if (name == kIONsLocalDisk) {
             _opts.stats->io_ns_local_disk += value;
+        } else if (name == kIONsCache) {
+            _opts.stats->io_ns_cache += value;
         } else if (name == kIONsRemote) {
             _opts.stats->io_ns_remote += value;
         }
