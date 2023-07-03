@@ -26,6 +26,7 @@
 #include "file_store.pb.h"
 #include "fmt/format.h"
 #include "fslib/star_cache_configuration.h"
+#include "fslib/star_cache_handler.h"
 #include "gflags/gflags.h"
 #include "gutil/strings/fastmem.h"
 #include "util/await.h"
@@ -376,6 +377,29 @@ void shutdown_staros_worker() {
 
     LOG(INFO) << "Executing starlet shutdown hooks ...";
     staros::starlet::common::ShutdownHook::shutdown();
+}
+
+// must keep each config the same
+void update_staros_starcache() {
+    if (fslib::FLAGS_use_star_cache != config::starlet_use_star_cache) {
+        fslib::FLAGS_use_star_cache = config::starlet_use_star_cache;
+        (void)fslib::star_cache_init(fslib::FLAGS_use_star_cache);
+    }
+
+    if (fslib::FLAGS_star_cache_mem_size_percent != config::starlet_star_cache_mem_size_percent) {
+        fslib::FLAGS_star_cache_mem_size_percent = config::starlet_star_cache_mem_size_percent;
+        (void)fslib::star_cache_update_memory_quota_percent(fslib::FLAGS_star_cache_mem_size_percent);
+    }
+
+    if (fslib::FLAGS_star_cache_disk_size_percent != config::starlet_star_cache_disk_size_percent) {
+        fslib::FLAGS_star_cache_disk_size_percent = config::starlet_star_cache_disk_size_percent;
+        (void)fslib::star_cache_update_disk_quota_percent(fslib::FLAGS_star_cache_disk_size_percent);
+    }
+
+    if (fslib::FLAGS_star_cache_disk_size_bytes != config::starlet_star_cache_disk_size_bytes) {
+        fslib::FLAGS_star_cache_disk_size_bytes = config::starlet_star_cache_disk_size_bytes;
+        (void)fslib::star_cache_update_disk_quota_bytes(fslib::FLAGS_star_cache_disk_size_bytes);
+    }
 }
 
 } // namespace starrocks

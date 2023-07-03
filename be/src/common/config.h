@@ -862,11 +862,10 @@ CONF_Int32(starlet_cache_dir_allocate_policy, "0");
 // Buffer size in starlet fs buffer stream, size <= 0 means not use buffer stream.
 // Only support in S3/HDFS currently.
 CONF_Int32(starlet_fs_stream_buffer_size_bytes, "131072");
-// TODO: support runtime change
-CONF_Bool(starlet_use_star_cache, "false");
-CONF_Int32(starlet_star_cache_mem_size_percent, "0");
-CONF_Int32(starlet_star_cache_disk_size_percent, "60");
-CONF_Int64(starlet_star_cache_disk_size_bytes, "0");
+CONF_mBool(starlet_use_star_cache, "false");
+CONF_mInt32(starlet_star_cache_mem_size_percent, "0");
+CONF_mInt32(starlet_star_cache_disk_size_percent, "60");
+CONF_mInt64(starlet_star_cache_disk_size_bytes, "0");
 CONF_Int32(starlet_star_cache_block_size_bytes, "1048576");
 // domain list separated by comma, e.g. '.example.com,.helloworld.com'
 CONF_String(starlet_s3_virtual_address_domainlist, "");
