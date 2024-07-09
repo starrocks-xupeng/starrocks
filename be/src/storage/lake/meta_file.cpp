@@ -201,6 +201,42 @@ void MetaFileBuilder::_collect_del_files_above_rebuild_point(RowsetMetadataPB* r
     }
 }
 
+// check the last input rowset to determine whether this is partial compaction,
+// if is, modify last intput rowset `segments` info, for example, following
+// `e` and `f` will be removed from last input rowset.
+// before(last rowset input segments): a b e d e f
+// output segments:                            e f m n
+// after(last rowset input segments): a b e d
+void trim_partial_compaction_last_input_rowset(MutableTabletMetadataPtr metadata,
+        const TxnLogPB_OpCompaction& op_compaction, RowsetMetadataPB& last_input_rowset) {
+    if (op_compaction.input_rowsets_size() < 1) {
+        return;
+    }
+    if (op_compaction.input_rowsets(op_compaction.input_rowsets_size() - 1) != last_input_rowset.id()) {
+        return;
+    }
+    if (op_compaction.has_output_rowset() && op_compaction.output_rowset().segments_size() > 0 &&
+        last_input_rowset.segments_size() > 0) {
+        // take the first segment of output rowset, find if it exists in last input rowset
+        const std::string& target = op_compaction.output_rowset().segments(0);
+        auto it = std::find_if(last_input_rowset.mutable_segments()->begin(),
+                last_input_rowset.mutable_segments()->end(),
+                [&target](const std::string& segment) {
+                    return target == segment;
+                });
+        if (it != last_input_rowset.mutable_segments()->end()) {
+            size_t before = last_input_rowset.segments_size();
+            // remove uncompacted segments
+            last_input_rowset.mutable_segments()->erase(it, last_input_rowset.mutable_segments()->end());
+            size_t after = last_input_rowset.segments_size();
+            LOG(INFO) << "find partial compaction, tablet: " << metadata->id() << ", version: "
+                      << metadata->version() << ", last input rowset id: " << last_input_rowset.id()
+                      << ", uncompacted segment count: " << (before - after)
+                      << ", start from segment: " << target;
+        }
+    }
+}
+
 void MetaFileBuilder::apply_opcompaction(const TxnLogPB_OpCompaction& op_compaction,
                                          uint32_t max_compact_input_rowset_id) {
     // delete input rowsets
@@ -221,6 +257,10 @@ void MetaFileBuilder::apply_opcompaction(const TxnLogPB_OpCompaction& op_compact
             delete_delvec_sid_range.emplace_back(it->id(), it->id() + it->segments_size() - 1);
             // Collect del files.
             _collect_del_files_above_rebuild_point(&(*it), &collect_del_files);
+            auto input_idx = static_cast<uint32_t>(search_it - op_compaction.input_rowsets().begin());
+            if (input_idx == op_compaction.input_rowsets_size() - 1) {
+                trim_partial_compaction_last_input_rowset(_tablet_meta, op_compaction, *it);
+            }
             _tablet_meta->mutable_compaction_inputs()->Add(std::move(*it));
             it = _tablet_meta->mutable_rowsets()->erase(it);
             del_range_ss << "[" << delete_delvec_sid_range.back().first << "," << delete_delvec_sid_range.back().second

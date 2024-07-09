@@ -26,6 +26,7 @@
 namespace starrocks {
 class Chunk;
 class Column;
+class RowsMapperBuilder;
 class TabletSchema;
 class ThreadPool;
 
@@ -128,6 +129,9 @@ public:
     void set_tablet_schema(TabletSchemaCSPtr schema) { _schema = std::move(schema); }
 
     const OlapWriterStatistics& stats() const { return _stats; }
+
+    // for pk only
+    virtual RowsMapperBuilder* rows_mapper_builder() { return nullptr; }
 
 protected:
     TabletManager* _tablet_mgr;

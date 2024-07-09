@@ -50,6 +50,8 @@ public:
 
     RowsetTxnMetaPB* rowset_txn_meta() override { return _rowset_txn_meta.get(); }
 
+    RowsMapperBuilder* rows_mapper_builder() override { return _rows_mapper_builder.get(); }
+
 protected:
     Status flush_segment_writer(SegmentPB* segment = nullptr) override;
 
@@ -81,6 +83,8 @@ public:
 
     // Finalize all segments footer.
     Status finish(SegmentPB* segment = nullptr) override;
+
+    RowsMapperBuilder* rows_mapper_builder() override { return _rows_mapper_builder.get(); }
 
 private:
     std::unique_ptr<RowsMapperBuilder> _rows_mapper_builder;

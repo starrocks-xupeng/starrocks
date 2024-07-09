@@ -995,7 +995,7 @@ CONF_mInt64(lake_vacuum_retry_min_delay_ms, "100");
 CONF_mInt64(lake_max_garbage_version_distance, "100");
 CONF_mBool(enable_primary_key_recover, "false");
 CONF_mBool(lake_enable_compaction_async_write, "false");
-CONF_mInt64(lake_pk_compaction_max_input_rowsets, "500");
+CONF_mInt64(lake_pk_compaction_max_input_segments, "500");
 CONF_mInt64(lake_pk_compaction_min_input_segments, "5");
 // Used for control memory usage of update state cache and compaction state cache
 CONF_mInt32(lake_pk_preload_memory_limit_percent, "30");
@@ -1354,5 +1354,9 @@ CONF_Bool(report_python_worker_error, "true");
 CONF_Bool(python_worker_reuse, "true");
 CONF_Int32(python_worker_expire_time_sec, "300");
 CONF_mBool(enable_pk_strict_memcheck, "true");
+
+// if turned on, each compaction will use at most N segments
+// for now, only support LAKE compaction.
+CONF_mBool(enable_compaction_strict_segment_count_check, "false");
 
 } // namespace starrocks::config

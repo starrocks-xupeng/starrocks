@@ -27,6 +27,7 @@
 #include "storage/rowset/segment.h"
 #include "storage/rowset/segment_options.h"
 #include "storage/rowset/short_key_range_option.h"
+#include "storage/rows_mapper.h"
 #include "storage/tablet_schema_map.h"
 #include "storage/union_iterator.h"
 
@@ -38,15 +39,27 @@ Rowset::Rowset(TabletManager* tablet_mgr, int64_t tablet_id, const RowsetMetadat
           _tablet_id(tablet_id),
           _metadata(metadata),
           _index(index),
-          _tablet_schema(std::move(tablet_schema)) {}
+          _tablet_schema(std::move(tablet_schema)),
+          _compaction_segment_limit(0) {}
 
-Rowset::Rowset(TabletManager* tablet_mgr, TabletMetadataPtr tablet_metadata, int rowset_index)
+Rowset::Rowset(TabletManager* tablet_mgr, TabletMetadataPtr tablet_metadata, int rowset_index,
+               size_t compaction_segment_limit)
         : _tablet_mgr(tablet_mgr),
           _tablet_id(tablet_metadata->id()),
           _metadata(&tablet_metadata->rowsets(rowset_index)),
           _index(rowset_index),
           _tablet_schema(GlobalTabletSchemaMap::Instance()->emplace(tablet_metadata->schema()).first),
-          _tablet_metadata(std::move(tablet_metadata)) {}
+          _tablet_metadata(std::move(tablet_metadata)) {
+    if (is_overlapped() && compaction_segment_limit < metadata().segments_size() &&
+        !config::enable_load_segment_parallel) {
+        // if segments are loaded in parallel, can not use partial compaction, since
+        // loaded segments might not be in the same sequence than that in rowset metadata
+        _compaction_segment_limit = compaction_segment_limit;
+    } else {
+        // every segment will be used
+        _compaction_segment_limit = 0;
+    }
+}
 
 Rowset::~Rowset() {
     if (_tablet_metadata) {
@@ -54,6 +67,32 @@ Rowset::~Rowset() {
                 << "tablet metadata been modified before rowset been destroyed";
         DCHECK_EQ(_metadata, &_tablet_metadata->rowsets(_index))
                 << "tablet metadata been modified during rowset been destroyed";
+    }
+}
+
+void Rowset::add_uncompacted_segments(TxnLogPB_OpCompaction* op_compaction, uint64_t& uncompacted_num_rows,
+        uint64_t& uncompacted_data_size) const {
+    if (!partial_segments_compaction()) { // defensive check
+        return;
+    }
+    bool has_encryption_meta = (metadata().segments_size() == metadata().segment_encryption_metas_size());
+    for (size_t i = _compaction_segment_limit, idx = 0; i < metadata().segments_size(); ++i, ++idx) {
+        op_compaction->mutable_output_rowset()->add_segments(metadata().segments(i));
+        StatusOr<int64_t> size_or = _uncompacted_segments[idx]->get_data_size();
+        int64_t file_size = 0;
+        if (size_or.ok()) {
+            file_size = *size_or;
+            op_compaction->mutable_output_rowset()->add_segment_size(file_size);
+        } else {
+            LOG(WARNING) << "unable to get file size for segment " << metadata().segments(i)
+                         << " for tablet " << _tablet_id << " when collecting uncompacted segment info.";
+        }
+        if (has_encryption_meta) {
+            op_compaction->mutable_output_rowset()->add_segment_encryption_metas(metadata().segment_encryption_metas(i));
+        }
+
+        uncompacted_num_rows += _uncompacted_segments[idx]->num_rows();
+        uncompacted_data_size += file_size;
     }
 }
 
@@ -112,7 +151,6 @@ StatusOr<std::vector<ChunkIteratorPtr>> Rowset::read(const Schema& schema, const
     }
 
     std::vector<ChunkIteratorPtr> segment_iterators;
-    segment_iterators.reserve(num_segments());
     if (options.stats) {
         options.stats->segments_read_count += num_segments();
     }
@@ -359,6 +397,46 @@ Status Rowset::load_segments(std::vector<SegmentPtr>* segments, const LakeIOOpti
             return status;
         }
     }
+
+    if (partial_segments_compaction()) {
+        _uncompacted_segments.clear();
+        _uncompacted_segments.insert(_uncompacted_segments.end(), segments->begin() + _compaction_segment_limit,
+                segments->end());
+        segments->resize(_compaction_segment_limit);
+    }
+
+    return Status::OK();
+}
+
+Status Rowset::build_rows_map(RowsMapperBuilder *builder, size_t chunk_size) {
+    if (builder == nullptr) {
+        return Status::OK();
+    }
+    if (!partial_segments_compaction()) {
+        return Status::OK();
+    }
+
+    std::vector<uint64_t> rssid_rowids;
+    rssid_rowids.reserve(chunk_size);
+
+    // process each uncompacted segment
+    for (size_t i = _compaction_segment_limit, idx = 0; i < metadata().segments_size(); ++i, ++idx) {
+        uint64_t rssid_shift = (uint64_t)(metadata().id() + _uncompacted_segments[idx]->id()) << 32;
+        size_t num_rows = _uncompacted_segments[idx]->num_rows();
+        // process one segment
+        for (uint64_t rowid = 0; rowid < num_rows; ++rowid) {
+            rssid_rowids.push_back(rssid_shift | rowid);
+            if (rssid_rowids.size() == chunk_size) {
+                RETURN_IF_ERROR(builder->append(rssid_rowids));
+                rssid_rowids.clear();
+            }
+        }
+        if (rssid_rowids.size() > 0) {
+            RETURN_IF_ERROR(builder->append(rssid_rowids));
+        }
+        rssid_rowids.clear();
+    }
+
     return Status::OK();
 }
 

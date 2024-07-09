@@ -65,6 +65,13 @@ Status HorizontalCompactionTask::execute(CancelFunc cancel_func, ThreadPool* flu
 
     int64_t reader_time_ns = 0;
     const bool enable_light_pk_compaction_publish = StorageEngine::instance()->enable_light_pk_compaction_publish();
+
+    // if this is PK light compaction and partial compaction, build rows mapper for those uncompacted segments
+    if (tablet_schema->keys_type() == KeysType::PRIMARY_KEYS && enable_light_pk_compaction_publish &&
+        _input_rowsets.size() > 0 && _input_rowsets.back()->partial_segments_compaction()) {
+        RETURN_IF_ERROR(_input_rowsets.back()->build_rows_map(writer->rows_mapper_builder(), chunk_size));
+    }
+
     while (true) {
         if (UNLIKELY(StorageEngine::instance()->bg_worker_stopped())) {
             return Status::Aborted("background worker stopped");
@@ -124,15 +131,29 @@ Status HorizontalCompactionTask::execute(CancelFunc cancel_func, ThreadPool* flu
         op_compaction->add_input_rowsets(rowset->id());
     }
 
+    // check last rowset whether this is a partial compaction
+    if (_input_rowsets.size() > 0 && _input_rowsets.back()->partial_segments_compaction()) {
+        // add uncompacted files first, so that they will be compacted first next time
+        uint64_t uncompacted_num_rows = 0;
+        uint64_t uncompacted_data_size = 0;
+        _input_rowsets.back()->add_uncompacted_segments(op_compaction, uncompacted_num_rows,
+                uncompacted_data_size);
+        op_compaction->mutable_output_rowset()->set_num_rows(writer->num_rows() + uncompacted_num_rows);
+        op_compaction->mutable_output_rowset()->set_data_size(writer->data_size() + uncompacted_data_size);
+        op_compaction->mutable_output_rowset()->set_overlapped(true);
+    } else {
+        op_compaction->mutable_output_rowset()->set_num_rows(writer->num_rows());
+        op_compaction->mutable_output_rowset()->set_data_size(writer->data_size());
+        op_compaction->mutable_output_rowset()->set_overlapped(false);
+    }
+
+    // after add uncompacted segments, add new segments
     for (auto& file : writer->files()) {
         op_compaction->mutable_output_rowset()->add_segments(file.path);
         op_compaction->mutable_output_rowset()->add_segment_size(file.size.value());
         op_compaction->mutable_output_rowset()->add_segment_encryption_metas(file.encryption_meta);
     }
 
-    op_compaction->mutable_output_rowset()->set_num_rows(writer->num_rows());
-    op_compaction->mutable_output_rowset()->set_data_size(writer->data_size());
-    op_compaction->mutable_output_rowset()->set_overlapped(false);
     op_compaction->set_compact_version(_tablet.metadata()->version());
     RETURN_IF_ERROR(execute_index_major_compaction(txn_log.get()));
     RETURN_IF_ERROR(_tablet.tablet_manager()->put_txn_log(txn_log));

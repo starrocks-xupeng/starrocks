@@ -92,15 +92,16 @@ bool min_input_segment_check(const std::shared_ptr<const TabletMetadataPB>& tabl
     return false;
 }
 
-StatusOr<std::vector<int64_t>> PrimaryCompactionPolicy::pick_rowset_indexes(
-        const std::shared_ptr<const TabletMetadataPB>& tablet_metadata, bool calc_score, std::vector<bool>* has_dels) {
+StatusOr<std::vector<RowsetCandidate>> PrimaryCompactionPolicy::pick_rowsets(
+        const std::shared_ptr<const TabletMetadataPB>& tablet_metadata, bool calc_score, std::vector<bool>* has_dels,
+        int64_t max_segments) {
     UpdateManager* mgr = _tablet_mgr->update_mgr();
-    std::vector<int64_t> rowset_indexes;
+    std::vector<RowsetCandidate> rowset_to_choose;
     if (!min_input_segment_check(tablet_metadata)) {
         // When the number of segments cannot meet the requirement
         // 1. Compaction score will be zero.
         // 2. None of rowset will be picked.
-        return rowset_indexes;
+        return rowset_to_choose;
     }
     std::vector<RowsetCandidate> rowset_vec;
     const auto tablet_id = tablet_metadata->id();
@@ -113,6 +114,7 @@ StatusOr<std::vector<int64_t>> PrimaryCompactionPolicy::pick_rowset_indexes(
         RowsetStat stat;
         stat.num_rows = rowset_pb.num_rows();
         stat.bytes = rowset_pb.data_size();
+        stat.num_segments = rowset_pb.overlapped() ? rowset_pb.segments_size() : 1;
         if (rowset_pb.has_num_dels()) {
             stat.num_dels = rowset_pb.num_dels();
         } else {
@@ -123,15 +125,17 @@ StatusOr<std::vector<int64_t>> PrimaryCompactionPolicy::pick_rowset_indexes(
     // 2. pick largest score level
     ASSIGN_OR_RETURN(auto pick_level_ptr, pick_max_level(calc_score, rowset_vec));
     if (pick_level_ptr == nullptr) {
-        return rowset_indexes;
+        return rowset_to_choose;
     }
 
     // 3. pick input rowsets from level
     size_t cur_compaction_result_bytes = 0;
+    size_t total_segments = 0;
     while (!pick_level_ptr->rowsets.empty()) {
         const auto& rowset_candidate = pick_level_ptr->rowsets.top();
         cur_compaction_result_bytes += rowset_candidate.read_bytes();
-        rowset_indexes.push_back(rowset_candidate.rowset_index);
+        total_segments += rowset_candidate.stat.num_segments;
+        rowset_to_choose.push_back(rowset_candidate);
         if (has_dels != nullptr) {
             has_dels->push_back(rowset_candidate.delete_bytes() > 0);
         }
@@ -140,25 +144,45 @@ StatusOr<std::vector<int64_t>> PrimaryCompactionPolicy::pick_rowset_indexes(
             std::max(config::update_compaction_result_bytes, compaction_data_size_threshold)) {
             break;
         }
-        // If calc_score is true, we skip `config::lake_pk_compaction_max_input_rowsets` check,
-        // because `config::lake_pk_compaction_max_input_rowsets` is only used to limit the number
+        // If calc_score is true, we skip `config::lake_pk_compaction_max_input_segments` check,
+        // because `config::lake_pk_compaction_max_input_segments` is only used to limit the number
         // of rowsets for real compaction merges
-        if (!calc_score && rowset_indexes.size() >= config::lake_pk_compaction_max_input_rowsets) {
-            break;
+        if (!calc_score) {
+            if (max_segments > 0) {
+                // use segment count
+                if (total_segments >= max_segments) {
+                    break;
+                }
+            } else {
+                // use rowset count, be compatible with old behaviour
+                if (rowset_to_choose.size() >= config::lake_pk_compaction_max_input_segments) {
+                    break;
+                }
+            }
         }
         pick_level_ptr->rowsets.pop();
     }
 
-    return rowset_indexes;
+    return rowset_to_choose;
 }
 
 StatusOr<std::vector<RowsetPtr>> PrimaryCompactionPolicy::pick_rowsets(
         const std::shared_ptr<const TabletMetadataPB>& tablet_metadata, bool calc_score, std::vector<bool>* has_dels) {
+    size_t total_segments = 0;
+    int64_t max_segments = config::enable_compaction_strict_segment_count_check ?
+            config::lake_pk_compaction_max_input_segments : 0;
     std::vector<RowsetPtr> input_rowsets;
-    ASSIGN_OR_RETURN(auto rowset_indexes, pick_rowset_indexes(tablet_metadata, calc_score, has_dels));
-    input_rowsets.reserve(rowset_indexes.size());
-    for (auto rowset_index : rowset_indexes) {
-        input_rowsets.emplace_back(std::make_shared<Rowset>(_tablet_mgr, tablet_metadata, rowset_index));
+    ASSIGN_OR_RETURN(auto picked_rowsets, pick_rowsets(tablet_metadata, calc_score, has_dels, max_segments));
+    input_rowsets.reserve(picked_rowsets.size());
+    for (size_t i = 0; i < picked_rowsets.size(); ++i) {
+        size_t segment_limit = 0; // 0 means no limit
+        if (max_segments > 0 && i == (picked_rowsets.size() - 1)) {
+            // if this is the last rowset, add segment count restriction
+            segment_limit = std::min(max_segments - total_segments, picked_rowsets[i].stat.num_segments);
+        }
+        input_rowsets.emplace_back(std::make_shared<Rowset>(_tablet_mgr, tablet_metadata,
+                picked_rowsets[i].rowset_index, segment_limit));
+        total_segments += picked_rowsets[i].stat.num_segments;
     }
     VLOG(2) << strings::Substitute(
             "lake PrimaryCompactionPolicy pick_rowsets tabletid:$0 version:$1 inputs:$2", tablet_metadata->id(),

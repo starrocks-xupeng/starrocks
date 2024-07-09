@@ -22,6 +22,10 @@
 #include "storage/options.h"
 #include "storage/rowset/base_rowset.h"
 
+namespace starrocks {
+class RowsMapperBuilder;
+} // namespace starrocks
+
 namespace starrocks::lake {
 
 class MetaFileBuilder;
@@ -44,7 +48,8 @@ public:
     // Requires:
     //  - |tablet_mgr| and |tablet_metadata| is not nullptr
     //  - 0 <= |rowset_index| && |rowset_index| < tablet_metadata->rowsets_size()
-    explicit Rowset(TabletManager* tablet_mgr, TabletMetadataPtr tablet_metadata, int rowset_index);
+    explicit Rowset(TabletManager* tablet_mgr, TabletMetadataPtr tablet_metadata, int rowset_index,
+                    size_t compaction_segment_limit);
 
     virtual ~Rowset();
 
@@ -76,7 +81,17 @@ public:
 
     [[nodiscard]] bool is_overlapped() const override { return metadata().overlapped(); }
 
-    [[nodiscard]] int64_t num_segments() const { return metadata().segments_size(); }
+    // if _compaction_segment_limit is set > 0, it means only partial segments will be used
+    [[nodiscard]] int64_t num_segments() const {
+            return _compaction_segment_limit > 0 ? _compaction_segment_limit : metadata().segments_size(); }
+
+    // only used in compaction
+    [[nodiscard]] bool partial_segments_compaction() const {
+        return _compaction_segment_limit > 0;
+    }
+    // only used in compaction
+    [[nodiscard]] void add_uncompacted_segments(TxnLogPB_OpCompaction* op_compaction, uint64_t& uncompacted_num_rows,
+            uint64_t& uncompacted_data_size) const;
 
     [[nodiscard]] int64_t num_rows() const override { return metadata().num_rows(); }
 
@@ -109,6 +124,8 @@ public:
 
     [[nodiscard]] int64_t version() const { return metadata().version(); }
 
+    [[nodiscard]] Status build_rows_map(RowsMapperBuilder *builder, size_t chunk_size);
+
 private:
     TabletManager* _tablet_mgr;
     int64_t _tablet_id;
@@ -117,13 +134,22 @@ private:
     TabletSchemaPtr _tablet_schema;
     TabletMetadataPtr _tablet_metadata;
     std::vector<SegmentSharedPtr> _segments;
+    // only takes effect when rowset is overlapped, tells how many segments will be used in compaction,
+    // default is 0 means every segment will be used.
+    // only used for compaction
+    size_t _compaction_segment_limit;
+    // store uncompacted segments meta here to
+    //   1. help PK light compaction to build rows mapper
+    //   2. make tablet meta's `num_rows` and `data_size` info accurate
+    // only used for compaction
+    std::vector<SegmentSharedPtr> _uncompacted_segments;
 };
 
 inline std::vector<RowsetPtr> Rowset::get_rowsets(TabletManager* tablet_mgr, const TabletMetadataPtr& tablet_metadata) {
     std::vector<RowsetPtr> rowsets;
     rowsets.reserve(tablet_metadata->rowsets_size());
     for (int i = 0, size = tablet_metadata->rowsets_size(); i < size; ++i) {
-        auto rowset = std::make_shared<Rowset>(tablet_mgr, tablet_metadata, i);
+        auto rowset = std::make_shared<Rowset>(tablet_mgr, tablet_metadata, i, 0 /* compaction_segment_limit */);
         rowsets.emplace_back(std::move(rowset));
     }
     return rowsets;

@@ -28,6 +28,7 @@ struct RowsetStat {
     size_t num_rows = 0;
     size_t num_dels = 0;
     size_t bytes = 0;
+    size_t num_segments = 0;
 };
 
 class RowsetCandidate {
@@ -123,11 +124,11 @@ public:
     StatusOr<std::vector<RowsetPtr>> pick_rowsets(const std::shared_ptr<const TabletMetadataPB>& tablet_metadata,
                                                   bool calc_score, std::vector<bool>* has_dels);
 
-    // Common function to return the picked rowset indexes.
-    // For compaction score, only picked rowset indexes are needed.
-    // For compaction, picked rowsets can be constructed by picked rowset indexes.
-    StatusOr<std::vector<int64_t>> pick_rowset_indexes(const std::shared_ptr<const TabletMetadataPB>& tablet_metadata,
-                                                       bool calc_score, std::vector<bool>* has_dels);
+    // Common function to return the picked rowsets.
+    // If calc_score is true, it means only for calculating compaction score, not execution,
+    // and in this case max_segments will not be used.
+    StatusOr<std::vector<RowsetCandidate>> pick_rowsets(const std::shared_ptr<const TabletMetadataPB>& tablet_metadata,
+                                                bool calc_score, std::vector<bool>* has_dels, int64_t max_segments);
 
     // When using Sized-tiered compaction policy, we need this function to pick highest score level.
     static StatusOr<std::unique_ptr<PKSizeTieredLevel>> pick_max_level(bool calc_score,
