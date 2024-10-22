@@ -20,6 +20,10 @@
 #include "block_cache/kv_cache.h"
 #include "common/status.h"
 
+namespace starcache {
+class StarCache;
+} // namespace starcache
+
 namespace starrocks {
 
 class BlockCache {
@@ -96,6 +100,7 @@ public:
 
     static const size_t MAX_BLOCK_SIZE;
 
+    std::shared_ptr<starcache::StarCache> get_star_cache();
 private:
 #ifndef BE_TEST
     BlockCache() = default;

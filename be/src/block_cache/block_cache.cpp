@@ -63,6 +63,13 @@ Status BlockCache::init(const CacheOptions& options) {
     return Status::OK();
 }
 
+std::shared_ptr<starcache::StarCache> BlockCache::get_star_cache() {
+    if (_kv_cache == nullptr) {
+        return nullptr;
+    }
+    return ((StarCacheWrapper *)_kv_cache.get()).get_star_cache();
+}
+
 Status BlockCache::write_buffer(const CacheKey& cache_key, off_t offset, const IOBuffer& buffer,
                                 WriteCacheOptions* options) {
     if (offset % _block_size != 0) {
