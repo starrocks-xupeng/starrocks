@@ -175,18 +175,42 @@ absl::Status StarOSWorker::update_worker_info(const staros::starlet::WorkerInfo&
     return absl::OkStatus();
 }
 
-absl::StatusOr<std::shared_ptr<fslib::FileSystem>> StarOSWorker::get_shard_filesystem(ShardId id,
-                                                                                      const Configuration& conf) {
+static staros::starlet::fslib::ReplicationOptions get_replication_options(const std::string& service_id,
+                                                                          const staros::starlet::ShardInfo &info) {
+    staros::starlet::fslib::ReplicationOptions replication_options;
+    if (!info.replicas.empty()) {
+        replication_options.service_id = service_id;
+        replication_options.shard_id = info.id;
+        for (auto replica : info.replicas) {
+            auto replication_info = g_starlet->get_worker_replication_info(replica.worker_id());
+            if (replication_info.ok()) {
+                replication_options.replication_type = (*replication_info).replication_type;
+                replication_options.replicas.push_back((*replication_info).ip_port);
+            } else {
+                LOG(INFO) << "get shard " << info.id << " replica info failed, " << replication_info.status();
+            }
+        }
+    }
+    return replication_options;
+}
+
+absl::StatusOr<FileSystemHandle> StarOSWorker::get_shard_filesystem(
+        ShardId id, const Configuration& conf, bool for_write) {
     { // shared_lock, check if the filesystem already created
         std::shared_lock l(_mtx);
         auto it = _shards.find(id);
         if (it == _shards.end()) {
             // unlock the lock and try best to build the filesystem with remote rpc call
             l.unlock();
-            return build_filesystem_on_demand(id, conf);
+            return build_filesystem_on_demand(id, conf, for_write);
         }
         if (it->second.fs) {
-            return it->second.fs;
+            FileSystemHandle handle;
+            handle.file_system = it->second.fs;
+            if (for_write) {
+                handle.replication_options = get_replication_options(service_id(), it->second.shard_info);
+            }
+            return handle;
         }
     }
 
@@ -197,17 +221,22 @@ absl::StatusOr<std::shared_ptr<fslib::FileSystem>> StarOSWorker::get_shard_files
         if (shard_iter == _shards.end()) {
             // unlock the lock and try best to build the filesystem with remote rpc call
             l.unlock();
-            return build_filesystem_on_demand(id, conf);
+            return build_filesystem_on_demand(id, conf, for_write);
         }
         if (shard_iter->second.fs) {
-            return shard_iter->second.fs;
+            FileSystemHandle handle;
+            handle.file_system = shard_iter->second.fs;
+            if (for_write) {
+                handle.replication_options = get_replication_options(service_id(), shard_iter->second.shard_info);
+            }
+            return handle;
         }
-        auto fs_or = build_filesystem_from_shard_info(shard_iter->second.shard_info, conf);
+        auto fs_or = build_filesystem_from_shard_info(shard_iter->second.shard_info, conf, for_write);
         if (!fs_or.ok()) {
             return fs_or.status();
         }
-        shard_iter->second.fs = std::move(fs_or).value();
-        return shard_iter->second.fs;
+        shard_iter->second.fs = (*fs_or).file_system;
+        return *fs_or;
     }
 }
 
@@ -225,17 +254,17 @@ absl::StatusOr<staros::starlet::ShardInfo> StarOSWorker::_fetch_shard_info_from_
     return g_starlet->get_shard_info(id);
 }
 
-absl::StatusOr<std::shared_ptr<fslib::FileSystem>> StarOSWorker::build_filesystem_on_demand(ShardId id,
-                                                                                            const Configuration& conf) {
+absl::StatusOr<FileSystemHandle> StarOSWorker::build_filesystem_on_demand(
+        ShardId id, const Configuration& conf, bool for_write) {
     auto info_or = _fetch_shard_info_from_remote(id);
     if (!info_or.ok()) {
         return info_or.status();
     }
-    return build_filesystem_from_shard_info(info_or.value(), conf);
+    return build_filesystem_from_shard_info(info_or.value(), conf, for_write);
 }
 
-absl::StatusOr<std::shared_ptr<fslib::FileSystem>> StarOSWorker::build_filesystem_from_shard_info(
-        const ShardInfo& info, const Configuration& conf) {
+absl::StatusOr<FileSystemHandle> StarOSWorker::build_filesystem_from_shard_info(
+        const ShardInfo& info, const Configuration& conf, bool for_write) {
     auto localconf = build_conf_from_shard_info(info);
     if (!localconf.ok()) {
         return localconf.status();
@@ -249,7 +278,16 @@ absl::StatusOr<std::shared_ptr<fslib::FileSystem>> StarOSWorker::build_filesyste
         // set environ variable to cachefs directory
         setenv(fslib::kFslibCacheDir.c_str(), config::starlet_cache_dir.c_str(), 0 /*overwrite*/);
     }
-    return new_shared_filesystem(*scheme, *localconf);
+    FileSystemHandle handle;
+    auto file_system = new_shared_filesystem(*scheme, *localconf);
+    if (!file_system.ok()) {
+        return file_system.status();
+    }
+    handle.file_system = *file_system;
+    if (for_write) {
+        handle.replication_options = get_replication_options(service_id(), info);
+    }
+    return handle;
 }
 
 bool StarOSWorker::need_enable_cache(const ShardInfo& info) {

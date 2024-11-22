@@ -38,6 +38,11 @@ class CacheKey;
 // Convert absl::Status to starrocks::Status
 Status to_status(const absl::Status& absl_status);
 
+struct FileSystemHandle {
+    std::shared_ptr<staros::starlet::fslib::FileSystem> file_system;
+    staros::starlet::fslib::ReplicationOptions replication_options;
+};
+
 class StarOSWorker : public staros::starlet::Worker {
 public:
     using ServiceId = staros::starlet::ServiceId;
@@ -68,7 +73,7 @@ public:
     std::vector<ShardInfo> shards() const override;
 
     // `conf`: a k-v map, provides additional information about the filesystem configuration
-    absl::StatusOr<std::shared_ptr<FileSystem>> get_shard_filesystem(ShardId id, const Configuration& conf);
+    absl::StatusOr<FileSystemHandle> get_shard_filesystem(ShardId id, const Configuration& conf, bool for_write);
 
     // retrieve shard info from the worker. Unlike `get_shard_info`, if the shard info is not there in local cache,
     // the worker will try to fetch it back from starmgr.
@@ -107,10 +112,9 @@ private:
             _add_shard_listener(shardId);
         }
     }
-
-    absl::StatusOr<std::shared_ptr<FileSystem>> build_filesystem_on_demand(ShardId id, const Configuration& conf);
-    absl::StatusOr<std::shared_ptr<FileSystem>> build_filesystem_from_shard_info(const ShardInfo& info,
-                                                                                 const Configuration& conf);
+    absl::StatusOr<FileSystemHandle> build_filesystem_on_demand(ShardId id, const Configuration& conf, bool for_write);
+    absl::StatusOr<FileSystemHandle> build_filesystem_from_shard_info(const ShardInfo& info,
+                                                                      const Configuration& conf, bool for_write);
     absl::StatusOr<std::shared_ptr<FileSystem>> new_shared_filesystem(std::string_view scheme,
                                                                       const Configuration& conf);
     absl::Status invalidate_fs(const ShardInfo& shard);
