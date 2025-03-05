@@ -1062,6 +1062,8 @@ CONF_mInt32(starlet_fslib_s3client_connect_timeout_ms, "1000");
 CONF_Alias(object_storage_request_timeout_ms, starlet_fslib_s3client_request_timeout_ms);
 CONF_mInt32(starlet_delete_files_max_key_in_batch, "1000");
 CONF_mInt32(starlet_filesystem_instance_cache_capacity, "10000");
+// timeout for cache replication
+CONF_mInt32(starlet_write_cache_rpc_timeout_ms, "5000");
 #endif
 
 CONF_mInt64(lake_metadata_cache_limit, /*2GB=*/"2147483648");

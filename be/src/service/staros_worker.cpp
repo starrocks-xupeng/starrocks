@@ -512,6 +512,8 @@ void init_staros_worker(const std::shared_ptr<starcache::StarCache>& star_cache)
     fslib::FLAGS_star_cache_disk_size_bytes = config::starlet_star_cache_disk_size_bytes;
     fslib::FLAGS_star_cache_block_size_bytes = config::starlet_star_cache_block_size_bytes;
 
+    fslib::FLAGS_write_cache_rpc_timeout_ms = config::starlet_write_cache_rpc_timeout_ms;
+
     staros::starlet::StarletConfig starlet_config;
     starlet_config.rpc_port = config::starlet_port;
     g_worker = std::make_shared<StarOSWorker>();
