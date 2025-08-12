@@ -867,9 +867,9 @@ TabletSharedPtr TabletManager::find_best_tablet_to_do_update_compaction(DataDir*
     }
 
     if (best_tablet != nullptr) {
-        LOG(INFO) << "Found the best tablet to compact. "
-                  << "compaction_type=update"
-                  << " tablet_id=" << best_tablet->tablet_id() << " highest_score=" << highest_score;
+        VLOG(2) << "Found the best tablet to compact. "
+                << "compaction_type=update"
+                << " tablet_id=" << best_tablet->tablet_id() << " highest_score=" << highest_score;
         StarRocksMetrics::instance()->tablet_update_max_compaction_score.set_value(highest_score);
     }
     return best_tablet;

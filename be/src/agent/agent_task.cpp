@@ -708,8 +708,8 @@ void run_upload_task(const std::shared_ptr<UploadAgentTaskRequest>& agent_task_r
     finish_task(finish_task_request);
     remove_task_info(agent_task_req->task_type, agent_task_req->signature);
 
-    LOG(INFO) << "Finished uploaded task signature=" << agent_task_req->signature
-              << " job id=" << upload_request.job_id;
+    VLOG(1) << "Finished uploaded task signature=" << agent_task_req->signature
+            << " job id=" << upload_request.job_id;
 }
 
 void run_download_task(const std::shared_ptr<DownloadAgentTaskRequest>& agent_task_req, ExecEnv* exec_env) {
@@ -766,9 +766,9 @@ void run_make_snapshot_task(const std::shared_ptr<SnapshotAgentTaskRequest>& age
                      << " status=" << st.to_string();
         error_msgs.push_back("make_snapshot failed. status: " + st.to_string());
     } else {
-        LOG(INFO) << "Created snapshot tablet_id=" << snapshot_request.tablet_id
-                  << " schema_hash=" << snapshot_request.schema_hash << " version=" << snapshot_request.version
-                  << " snapshot_path=" << snapshot_path;
+        VLOG(1) << "Created snapshot tablet_id=" << snapshot_request.tablet_id
+                << " schema_hash=" << snapshot_request.schema_hash << " version=" << snapshot_request.version
+                << " snapshot_path=" << snapshot_path;
         if (snapshot_request.__isset.list_files) {
             // list and save all snapshot files
             // snapshot_path like: data/snapshot/20180417205230.1.86400
@@ -818,7 +818,7 @@ void run_release_snapshot_task(const std::shared_ptr<ReleaseSnapshotAgentTaskReq
         error_msgs.push_back("release_snapshot failed. status: " +
                              boost::lexical_cast<std::string>(release_snapshot_status));
     } else {
-        LOG(INFO) << "Released snapshot path=" << snapshot_path << " status=" << release_snapshot_status;
+        VLOG(1) << "Released snapshot path=" << snapshot_path << " status=" << release_snapshot_status;
     }
 
     unify_finish_agent_task(status_code, error_msgs, agent_task_req->task_type, agent_task_req->signature);
