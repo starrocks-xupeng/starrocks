@@ -23,6 +23,7 @@ import com.starrocks.catalog.UserIdentity;
 import com.starrocks.catalog.system.SystemId;
 import com.starrocks.catalog.system.SystemTable;
 import com.starrocks.cluster.ClusterNamespace;
+import com.starrocks.common.util.SqlCredentialRedactor;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.scheduler.Constants;
 import com.starrocks.scheduler.Task;
@@ -101,7 +102,7 @@ public class TasksSystemTable {
             info.setSchedule(scheduleStr);
             info.setCatalog(task.getCatalogName());
             info.setDatabase(ClusterNamespace.getNameFromFullName(task.getDbName()));
-            info.setDefinition(task.getDefinition());
+            info.setDefinition(SqlCredentialRedactor.redact(task.getDefinition()));
             info.setExpire_time(task.getExpireTime() / 1000);
             info.setProperties(task.getPropertiesString());
             if (task.getUserIdentity() != null) {
