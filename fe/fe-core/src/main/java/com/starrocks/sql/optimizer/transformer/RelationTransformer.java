@@ -104,6 +104,7 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalAssertOneRowOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalCTEAnchorOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalCTEConsumeOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalCTEProduceOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCacheStatsScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaLakeScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalEsScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalExceptOperator;
@@ -646,6 +647,14 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
                         .setSelectPartitionNames(node.getPartitionNames() == null ? Collections.emptyList() :
                                 node.getPartitionNames().getPartitionNames())
                         .setSelectedIndexId(((OlapTable) node.getTable()).getBaseIndexId())
+                        .build();
+            } else if (node.isCacheStatsQuery()) {
+                if (!node.getTable().isCloudNativeTableOrMaterializedView()) {
+                    throw new SemanticException("_CACHE_STATS_ hint is only supported for Lake Table");
+                }
+                scanOperator = LogicalCacheStatsScanOperator.builder()
+                        .setTable(node.getTable())
+                        .setColRefToColumnMetaMap(colRefToColumnMetaMapBuilder.build())
                         .build();
             } else if (!isMVPlanner) {
                 scanOperator = LogicalOlapScanOperator.builder()

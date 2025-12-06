@@ -311,6 +311,8 @@ public enum RuleType {
     GP_VECTOR_REWRITE,
     GP_TVR_REWRITE,
 
+    IMP_CACHE_STATS_LSCAN_TO_PSCAN,
+
     NUM_RULES;
 
     public int id() {
