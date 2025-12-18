@@ -320,6 +320,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String SKIP_PAGE_CACHE = "skip_page_cache";
 
+    public static final String ENABLE_SHARED_FILE_COLUMN_ITERATOR = "enable_shared_file_column_iterator";
+
     public static final String ENABLE_TABLET_INTERNAL_PARALLEL = "enable_tablet_internal_parallel";
     public static final String ENABLE_TABLET_INTERNAL_PARALLEL_V2 = "enable_tablet_internal_parallel_v2";
 
@@ -1130,6 +1132,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VariableMgr.VarAttr(name = SKIP_PAGE_CACHE)
     private boolean skipPageCache = false;
+
+    @VariableMgr.VarAttr(name = ENABLE_SHARED_FILE_COLUMN_ITERATOR)
+    private boolean enableSharedFileColumnIterator = false;
 
     @VariableMgr.VarAttr(name = RUNTIME_FILTER_SCAN_WAIT_TIME, flag = VariableMgr.INVISIBLE)
     private long runtimeFilterScanWaitTime = 20L;
@@ -3333,6 +3338,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isSkipPageCache() {
         return skipPageCache;
+    }
+
+    public void setEnableSharedFileColumnIterator(boolean enableSharedFileColumnIterator) {
+        this.enableSharedFileColumnIterator = enableSharedFileColumnIterator;
+    }
+
+    public boolean getEnableSharedFileColumnIterator() {
+        return this.enableSharedFileColumnIterator;
     }
 
     public int getStatisticCollectParallelism() {
@@ -5843,6 +5856,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         tResult.setEnable_hash_join_range_direct_mapping_opt(enableHashJoinRangeDirectMappingOpt);
         tResult.setEnable_hash_join_linear_chained_opt(enableHashJoinLinearChainedOpt);
         tResult.setEnable_hash_join_serialize_fixed_size_string(enableHashJoinSerializeFixedSizeString);
+        tResult.setEnable_shared_file_column_iterator(enableSharedFileColumnIterator);
 
         return tResult;
     }

@@ -359,6 +359,7 @@ struct TQueryOptions {
   210: optional bool enable_global_late_materialization;
   211: optional bool enable_schedule_log;
 
+  220: optional bool enable_shared_file_column_iterator;
 }
 
 // A scan range plus the parameters needed to execute that scan.

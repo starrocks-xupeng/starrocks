@@ -126,6 +126,8 @@ public:
 
     bool read_by_generated_column_adding = false;
 
+    bool enable_shared_file_column_iterator = false;
+
 public:
     Status convert_to(SegmentReadOptions* dst, const std::vector<LogicalType>& new_types, ObjectPool* obj_pool) const;
 

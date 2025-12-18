@@ -358,7 +358,8 @@ private:
     DeltaColumnGroupList _dcgs;
     roaring::api::roaring_uint32_iterator_t _roaring_iter;
 
-    std::unordered_map<ColumnId, std::unique_ptr<io::SeekableInputStream>> _column_files;
+    std::shared_ptr<RandomAccessFile> _shared_column_file = nullptr;
+    std::unordered_map<ColumnId, std::shared_ptr<io::SeekableInputStream>> _column_files;
 
     SparseRange<> _scan_range;
     SparseRangeIterator<> _range_iter;
@@ -949,7 +950,16 @@ Status SegmentIterator::_init_column_iterator_by_cid(const ColumnId cid, const C
         if (encryption_info) {
             opts.encryption_info = *encryption_info;
         }
-        ASSIGN_OR_RETURN(auto rfile, _opts.fs->new_random_access_file_with_bundling(opts, _segment->file_info()));
+        std::shared_ptr<RandomAccessFile> rfile;
+        if (_shared_column_file) {
+            rfile = _shared_column_file;
+        } else {
+            ASSIGN_OR_RETURN(auto tmp_rfile, _opts.fs->new_random_access_file_with_bundling(opts, _segment->file_info()));
+            rfile = std::move(tmp_rfile);
+            if (_opts.enable_shared_file_column_iterator) {
+                _shared_column_file = rfile;
+            }
+        }
         if (config::io_coalesce_lake_read_enable && !_segment->is_default_column(col) &&
             _segment->lake_tablet_manager() != nullptr) {
             ASSIGN_OR_RETURN(auto file_size, rfile->get_size());
@@ -2739,10 +2749,18 @@ void SegmentIterator::close() {
     _dcg_segments.clear();
     _column_decoders.clear();
 
+    if (_shared_column_file) {
+        _update_stats(_shared_column_file.get());
+    }
     for (auto& [cid, rfile] : _column_files) {
         // update statistics before reset column file
-        _update_stats(rfile.get());
+        if (!_shared_column_file || _shared_column_file != rfile) {
+            _update_stats(rfile.get());
+        }
         rfile.reset();
+    }
+    if (_shared_column_file) {
+        _shared_column_file.reset();
     }
 
     STLClearObject(&_selection);
