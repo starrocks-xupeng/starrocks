@@ -82,6 +82,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
@@ -98,8 +99,22 @@ public class PublishVersionDaemon extends FrontendDaemon {
     // each thread under the default configurations
     private static final int LAKE_PUBLISH_MAX_QUEUE_SIZE = 4096;
 
+    // Default number of DB worker threads
+    private static final int DB_WORKER_THREADS_DEFAULT = 4;
+    // Hard limit for DB worker threads
+    private static final int DB_WORKER_THREADS_HARD_LIMIT = 128;
+
     private ThreadPoolExecutor lakeTaskExecutor;
     private ThreadPoolExecutor deleteTxnLogExecutor;
+
+    // Thread pool for per-DB publish version polling
+    private ThreadPoolExecutor dbPublishExecutor;
+
+    // Track which DBs are currently being processed to avoid duplicate submissions
+    private final Set<Long> processingDbs = ConcurrentHashMap.newKeySet();
+
+    // Whether to use multi-thread mode, determined at initialization and cannot be changed at runtime
+    private final boolean useMultiThreadMode;
 
     @VisibleForTesting
     protected Set<Long> publishingLakeTransactions;
@@ -109,50 +124,200 @@ public class PublishVersionDaemon extends FrontendDaemon {
 
     public PublishVersionDaemon() {
         super("publish-version-daemon", Config.publish_version_interval_ms);
+        this.useMultiThreadMode = Config.publish_version_db_worker_threads > 0;
+        if (useMultiThreadMode) {
+            LOG.info("PublishVersionDaemon initialized in multi-thread mode with {} worker threads",
+                    Config.publish_version_db_worker_threads);
+        } else {
+            LOG.info("PublishVersionDaemon initialized in single-thread mode");
+        }
     }
 
     @Override
     protected void runAfterCatalogReady() {
         try {
-            GlobalTransactionMgr globalTransactionMgr = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
-            if (Config.lake_enable_batch_publish_version && RunMode.isSharedDataMode()) {
-                // batch publish
-                List<TransactionStateBatch> readyTransactionStatesBatch = globalTransactionMgr.
-                        getReadyPublishTransactionsBatch();
-                if (readyTransactionStatesBatch.size() != 0) {
-                    publishVersionForLakeTableBatch(readyTransactionStatesBatch);
-                }
-                return;
-
-            }
-
-            List<TransactionState> readyTransactionStates =
-                    globalTransactionMgr.getReadyToPublishTransactions(Config.enable_new_publish_mechanism);
-            if (readyTransactionStates == null || readyTransactionStates.isEmpty()) {
-                return;
-            }
-
-            // TODO: need to refactor after be split into cn + dn
-            List<Long> allBackends =
-                    GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getBackendIds(false);
-            if (RunMode.isSharedDataMode()) {
-                allBackends.addAll(
-                        GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getComputeNodeIds(false));
-            }
-
-            if (allBackends.isEmpty()) {
-                LOG.warn("some transaction state need to publish, but no backend exists");
-                return;
-            }
-
-            if (RunMode.isSharedNothingMode()) { // share_nothing mode
-                publishVersionForOlapTable(readyTransactionStates);
-            } else { // share_data mode
-                publishVersionForLakeTable(readyTransactionStates);
+            if (useMultiThreadMode) {
+                runWithMultiThreads();
+            } else {
+                runWithSingleThread();
             }
         } catch (Throwable t) {
             LOG.error("errors while publish version to all backends", t);
         }
+    }
+
+    /**
+     * Original single-thread publish version logic.
+     * This method handles all DBs in a single thread iteration.
+     */
+    private void runWithSingleThread() throws StarRocksException {
+        GlobalTransactionMgr globalTransactionMgr = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
+        if (Config.lake_enable_batch_publish_version && RunMode.isSharedDataMode()) {
+            // batch publish
+            List<TransactionStateBatch> readyTransactionStatesBatch = globalTransactionMgr.
+                    getReadyPublishTransactionsBatch();
+            if (readyTransactionStatesBatch.size() != 0) {
+                publishVersionForLakeTableBatch(readyTransactionStatesBatch);
+            }
+            return;
+        }
+
+        List<TransactionState> readyTransactionStates =
+                globalTransactionMgr.getReadyToPublishTransactions(Config.enable_new_publish_mechanism);
+        if (readyTransactionStates == null || readyTransactionStates.isEmpty()) {
+            return;
+        }
+
+        // TODO: need to refactor after be split into cn + dn
+        List<Long> allBackends =
+                GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getBackendIds(false);
+        if (RunMode.isSharedDataMode()) {
+            allBackends.addAll(
+                    GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getComputeNodeIds(false));
+        }
+
+        if (allBackends.isEmpty()) {
+            LOG.warn("some transaction state need to publish, but no backend exists");
+            return;
+        }
+
+        if (RunMode.isSharedNothingMode()) { // share_nothing mode
+            publishVersionForOlapTable(readyTransactionStates);
+        } else { // share_data mode
+            publishVersionForLakeTable(readyTransactionStates);
+        }
+    }
+
+    /**
+     * Per-DB worker thread publish version logic.
+     * Each DB is assigned to a worker thread via hash, ensuring that transactions
+     * from the same DB are always processed by the same thread.
+     */
+    private void runWithMultiThreads() {
+        GlobalTransactionMgr globalTransactionMgr = GlobalStateMgr.getCurrentState().getGlobalTransactionMgr();
+        Map<Long, DatabaseTransactionMgr> allDbMgrs = globalTransactionMgr.getAllDatabaseTransactionMgrs();
+
+        if (allDbMgrs.isEmpty()) {
+            return;
+        }
+
+        List<Long> allBackends =
+                GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getBackendIds(false);
+        if (RunMode.isSharedDataMode()) {
+            allBackends.addAll(
+                    GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getComputeNodeIds(false));
+        }
+
+        if (allBackends.isEmpty()) {
+            LOG.warn("some transaction state need to publish, but no backend exists");
+            return;
+        }
+
+        ThreadPoolExecutor executor = getDbPublishExecutor();
+
+        // Submit a task for each DB that has committed transactions
+        for (Map.Entry<Long, DatabaseTransactionMgr> entry : allDbMgrs.entrySet()) {
+            long dbId = entry.getKey();
+            DatabaseTransactionMgr dbTxnMgr = entry.getValue();
+
+            // Skip if this DB is already being processed
+            if (!processingDbs.add(dbId)) {
+                continue;
+            }
+
+            // Submit task to executor
+            try {
+                executor.execute(() -> {
+                    try {
+                        processDbTransactions(dbId, dbTxnMgr);
+                    } catch (Throwable t) {
+                        LOG.error("Error processing transactions for db {}", dbId, t);
+                    } finally {
+                        processingDbs.remove(dbId);
+                    }
+                });
+            } catch (Exception e) {
+                // Task rejected, remove from processing set
+                processingDbs.remove(dbId);
+                LOG.warn("Failed to submit publish task for db {}: {}", dbId, e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Process transactions for a specific DB.
+     * This method is called by worker threads in per-DB mode.
+     */
+    private void processDbTransactions(long dbId, DatabaseTransactionMgr dbTxnMgr) throws StarRocksException {
+        if (Config.lake_enable_batch_publish_version && RunMode.isSharedDataMode()) {
+            // batch publish for lake table
+            List<TransactionStateBatch> txnBatches = dbTxnMgr.getReadyToPublishTxnListBatch();
+            if (!txnBatches.isEmpty()) {
+                publishVersionForLakeTableBatch(txnBatches);
+            }
+        } else {
+            List<TransactionState> txnStates = Config.enable_new_publish_mechanism
+                    ? dbTxnMgr.getReadyToPublishTxnList()
+                    : dbTxnMgr.getCommittedTxnList();
+
+            if (txnStates.isEmpty()) {
+                return;
+            }
+
+            if (RunMode.isSharedNothingMode()) {
+                publishVersionForOlapTable(txnStates);
+            } else {
+                publishVersionForLakeTable(txnStates);
+            }
+        }
+    }
+
+    /**
+     * Get or create the thread pool for per-DB publish version workers.
+     */
+    private @NotNull ThreadPoolExecutor getDbPublishExecutor() {
+        if (dbPublishExecutor == null) {
+            int numThreads = getOrFixDbWorkerThreadsConfig();
+            dbPublishExecutor = ThreadPoolManager.newDaemonFixedThreadPool(
+                    numThreads,
+                    LAKE_PUBLISH_MAX_QUEUE_SIZE,
+                    "publish-poll-worker",
+                    true);
+            dbPublishExecutor.allowCoreThreadTimeOut(true);
+
+            // Register config change listener
+            GlobalStateMgr.getCurrentState().getConfigRefreshDaemon()
+                    .registerListener(this::adjustDbPublishExecutor);
+        }
+        return dbPublishExecutor;
+    }
+
+    private int getOrFixDbWorkerThreadsConfig() {
+        int numThreads = Config.publish_version_db_worker_threads;
+        if (numThreads <= 0) {
+            LOG.warn("Invalid publish_version_db_worker_threads={}, using default={}",
+                    numThreads, DB_WORKER_THREADS_DEFAULT);
+            numThreads = DB_WORKER_THREADS_DEFAULT;
+            Config.publish_version_db_worker_threads = numThreads;
+        } else if (numThreads > DB_WORKER_THREADS_HARD_LIMIT) {
+            LOG.warn("publish_version_db_worker_threads={} exceeds hard limit={}, using default={}",
+                    numThreads, DB_WORKER_THREADS_HARD_LIMIT, DB_WORKER_THREADS_DEFAULT);
+            numThreads = DB_WORKER_THREADS_DEFAULT;
+            Config.publish_version_db_worker_threads = numThreads;
+        }
+        return numThreads;
+    }
+
+    private void adjustDbPublishExecutor() {
+        if (dbPublishExecutor == null) {
+            return;
+        }
+
+        int newNumThreads = Config.publish_version_db_worker_threads;
+        if (newNumThreads <= 0 || newNumThreads > DB_WORKER_THREADS_HARD_LIMIT) {
+            return;
+        }
+        ThreadPoolManager.setFixedThreadPoolSize(dbPublishExecutor, newNumThreads);
     }
 
     private int getOrFixLakeTaskExecutorThreadPoolMaxSizeConfig() {
