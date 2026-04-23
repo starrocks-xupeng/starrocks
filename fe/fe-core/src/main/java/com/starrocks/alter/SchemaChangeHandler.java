@@ -2348,6 +2348,19 @@ public class SchemaChangeHandler extends AlterHandler {
                 compactionStrategy = properties.getOrDefault(PropertyAnalyzer.PROPERTIES_COMPACTION_STRATEGY,
                         TableProperty.DEFAULT_COMPACTION_STRATEGY);
                 metaType = TTabletMetaType.COMPACTION_STRATEGY;
+            } else if (properties.containsKey(PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION)) {
+                // cn_free_tablet_creation is a pure FE property, only needs to update TableProperty.
+                // No need to send task to BE/CN.
+                boolean newValue = Boolean.parseBoolean(
+                        properties.get(PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION));
+                if (newValue == olapTable.isCnFreeTabletCreation()) {
+                    LOG.info("table: {} cn_free_tablet_creation is {}, nothing need to do",
+                            olapTable.getName(), newValue);
+                    return null;
+                }
+                GlobalStateMgr.getCurrentState().getLocalMetastore().alterTableProperties(db, olapTable, properties);
+                LOG.info("updated table: {} cn_free_tablet_creation to {}", olapTable.getName(), newValue);
+                return null;
             } else if (properties.containsKey(PropertyAnalyzer.PROPERTIES_LAKE_COMPACTION_MAX_PARALLEL)) {
                 // lake_compaction_max_parallel is a pure FE property, only needs to update TableProperty
                 // It will be read when FE sends compaction requests to BE

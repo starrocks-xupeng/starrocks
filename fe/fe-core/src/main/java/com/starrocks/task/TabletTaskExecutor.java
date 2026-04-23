@@ -68,6 +68,12 @@ public class TabletTaskExecutor {
     public static class CreateTabletOption {
         private boolean enableTabletCreationOptimization;
         private long gtid;
+        // Pre-downgrade backfill: bypass the cn-free skip so CreateReplicaTask is
+        // sent even when the table has cn_free_tablet_creation=true. Used by ALTER
+        // TABLE SET ("cn_free_tablet_creation" = "false") to write v1 metadata and
+        // schema file to object storage before downgrading to a CN that has no
+        // cn-free fallback.
+        private boolean forceCreateTablet = false;
 
         public boolean isEnableTabletCreationOptimization() {
             return enableTabletCreationOptimization;
@@ -84,6 +90,14 @@ public class TabletTaskExecutor {
         public void setGtid(long gtid) {
             this.gtid = gtid;
         }
+
+        public boolean isForceCreateTablet() {
+            return forceCreateTablet;
+        }
+
+        public void setForceCreateTablet(boolean forceCreateTablet) {
+            this.forceCreateTablet = forceCreateTablet;
+        }
     }
 
     public static void buildPartitionsSequentially(long dbId, OlapTable table, List<PhysicalPartition> partitions,
@@ -91,7 +105,7 @@ public class TabletTaskExecutor {
                                                    int numBackends,
                                                    ComputeResource computeResource,
                                                    CreateTabletOption option) throws DdlException {
-        if (table.isCnFreeTabletCreation()) {
+        if (table.isCnFreeTabletCreation() && !option.isForceCreateTablet()) {
             return;
         }
         // Try to bundle at least 200 CreateReplicaTask's in a single AgentBatchTask.
@@ -125,7 +139,7 @@ public class TabletTaskExecutor {
                                                    int numBackends,
                                                    ComputeResource computeResource,
                                                    CreateTabletOption option) throws DdlException {
-        if (table.isCnFreeTabletCreation()) {
+        if (table.isCnFreeTabletCreation() && !option.isForceCreateTablet()) {
             return;
         }
         long start = System.currentTimeMillis();

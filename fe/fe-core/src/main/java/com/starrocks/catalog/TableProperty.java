@@ -507,6 +507,7 @@ public class TableProperty implements Writable, GsonPostProcessable {
                 buildLakeCompactionMaxParallel();
                 buildTableQueryTimeout();
                 buildDataCacheEnable();
+                buildCnFreeTabletCreation();
                 break;
             case OperationType.OP_MODIFY_TABLE_CONSTRAINT_PROPERTY:
                 buildConstraint();

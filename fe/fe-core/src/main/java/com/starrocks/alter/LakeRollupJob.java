@@ -64,6 +64,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -198,10 +199,12 @@ public class LakeRollupJob extends LakeTableSchemaChangeJobBase {
         long numTablets = 0;
         AgentBatchTask batchTask = new AgentBatchTask();
         MarkedCountDownLatch<Long, Long> countDownLatch;
+        boolean cnFreeTabletCreation;
         final WarehouseManager warehouseManager = GlobalStateMgr.getCurrentState().getWarehouseMgr();
         try (ReadLockedDatabase db = getReadLockedDatabase(dbId)) {
             OlapTable table = getTableOrThrow(db, tableId);
             Preconditions.checkState(table.getState() == OlapTable.OlapTableState.ROLLUP);
+            cnFreeTabletCreation = table.isCnFreeTabletCreation();
 
             // disable tablet creation optimaization to avoid overwriting files with the same name.
             if (table.isFileBundling()) {
@@ -216,7 +219,11 @@ public class LakeRollupJob extends LakeTableSchemaChangeJobBase {
             countDownLatch = new MarkedCountDownLatch<>((int) numTablets);
 
             long gtid = getNextGtid();
-            for (Map.Entry<Long, MaterializedIndex> entry : this.physicalPartitionIdToRollupIndex.entrySet()) {
+            // For cn-free tablet creation, skip building CreateReplicaTask. Version 1 metadata
+            // of rollup tablets is constructed on demand via cn-free fallback on CN.
+            for (Map.Entry<Long, MaterializedIndex> entry : cnFreeTabletCreation
+                    ? Collections.<Map.Entry<Long, MaterializedIndex>>emptySet()
+                    : this.physicalPartitionIdToRollupIndex.entrySet()) {
                 long partitionId = entry.getKey();
                 PhysicalPartition partition = table.getPhysicalPartition(partitionId);
                 if (partition == null) {
@@ -291,7 +298,10 @@ public class LakeRollupJob extends LakeTableSchemaChangeJobBase {
             }
         }
 
-        sendAgentTaskAndWait(batchTask, countDownLatch, Config.tablet_create_timeout_second * numTablets);
+        // For cn-free tablet creation, no tasks were built above, skip sending.
+        if (!cnFreeTabletCreation) {
+            sendAgentTaskAndWait(batchTask, countDownLatch, Config.tablet_create_timeout_second * numTablets);
+        }
 
         // Add shadow indexes to table.
         try (WriteLockedDatabase db = getWriteLockedDatabase(dbId)) {

@@ -471,7 +471,8 @@ public class AlterJobExecutor implements AstVisitorExtendInterface<Void, Connect
                     || properties.containsKey(PropertyAnalyzer.PROPERTIES_FILE_BUNDLING)
                     || properties.containsKey(PropertyAnalyzer.PROPERTIES_COMPACTION_STRATEGY)
                     || properties.containsKey(PropertyAnalyzer.PROPERTIES_LAKE_COMPACTION_MAX_PARALLEL)
-                    || properties.containsKey(PropertyAnalyzer.PROPERTIES_CLOUD_NATIVE_FAST_SCHEMA_EVOLUTION_V2)) {
+                    || properties.containsKey(PropertyAnalyzer.PROPERTIES_CLOUD_NATIVE_FAST_SCHEMA_EVOLUTION_V2)
+                    || properties.containsKey(PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION)) {
                 if (table.isCloudNativeTable()) {
                     Locker locker = new Locker();
                     locker.lockTablesWithIntensiveDbLock(db.getId(), Lists.newArrayList(table.getId()), LockType.WRITE);

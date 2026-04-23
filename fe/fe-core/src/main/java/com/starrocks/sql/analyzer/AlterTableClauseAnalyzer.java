@@ -297,6 +297,13 @@ public class AlterTableClauseAnalyzer implements AstVisitorExtendInterface<Void,
                         "Property " + PropertyAnalyzer.PROPERTIES_ENABLE_PERSISTENT_INDEX +
                                 " must be bool type(false/true)");
             }
+        } else if (properties.containsKey(PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION)) {
+            if (!properties.get(PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION).equalsIgnoreCase("true") &&
+                    !properties.get(PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION).equalsIgnoreCase("false")) {
+                ErrorReport.reportSemanticException(ErrorCode.ERR_COMMON_ERROR,
+                        "Property " + PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION +
+                                " must be bool type(false/true)");
+            }
         } else if (properties.containsKey(PropertyAnalyzer.PROPERTIES_PERSISTENT_INDEX_TYPE)) {
             if (!properties.get(PropertyAnalyzer.PROPERTIES_PERSISTENT_INDEX_TYPE).equalsIgnoreCase("CLOUD_NATIVE") &&
                     !properties.get(PropertyAnalyzer.PROPERTIES_PERSISTENT_INDEX_TYPE).equalsIgnoreCase("LOCAL")) {

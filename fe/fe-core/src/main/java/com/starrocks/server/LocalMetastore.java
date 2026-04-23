@@ -2018,6 +2018,11 @@ public class LocalMetastore implements ConnectorMetadata, MVRepairHandler, Memor
 
     void buildPartitions(Database db, OlapTable table, List<PhysicalPartition> partitions,
                          ComputeResource computeResource) throws DdlException {
+        buildPartitions(db, table, partitions, computeResource, /* forceCreateTablet = */ false);
+    }
+
+    void buildPartitions(Database db, OlapTable table, List<PhysicalPartition> partitions,
+                         ComputeResource computeResource, boolean forceCreateTablet) throws DdlException {
         if (partitions.isEmpty()) {
             return;
         }
@@ -2033,7 +2038,10 @@ public class LocalMetastore implements ConnectorMetadata, MVRepairHandler, Memor
                 }
             }
         }
-        if (numAliveNodes == 0 && !table.isCnFreeTabletCreation()) {
+        // cn-free creation is normally exempt from the alive-node check, but a forced
+        // backfill (pre-downgrade) still has to send real CreateReplicaTask, so it
+        // requires alive nodes regardless.
+        if (numAliveNodes == 0 && (forceCreateTablet || !table.isCnFreeTabletCreation())) {
             if (RunMode.isSharedDataMode()) {
                 throw new DdlException("no alive compute nodes");
             } else {
@@ -2047,12 +2055,13 @@ public class LocalMetastore implements ConnectorMetadata, MVRepairHandler, Memor
         }
 
         TabletTaskExecutor.CreateTabletOption option = new TabletTaskExecutor.CreateTabletOption();
-        // Enable `tablet_creation_optimization` creates only one shared tablet metadata for all tablets under a partition. 
+        // Enable `tablet_creation_optimization` creates only one shared tablet metadata for all tablets under a partition.
         // Enable `file_bundling` reuses the optimization logic.
         // These two configure only use in shared-data mode
         option.setEnableTabletCreationOptimization(table.isCloudNativeTableOrMaterializedView()
                 && (Config.lake_enable_tablet_creation_optimization || table.isFileBundling()));
         option.setGtid(GlobalStateMgr.getCurrentState().getGtidGenerator().nextGtid());
+        option.setForceCreateTablet(forceCreateTablet);
 
         try {
             GlobalStateMgr.getCurrentState().getConsistencyChecker().addCreatingTableId(table.getId());
@@ -4109,6 +4118,53 @@ public class LocalMetastore implements ConnectorMetadata, MVRepairHandler, Memor
         });
     }
 
+    private void alterCnFreeTabletCreation(Database db, OlapTable table,
+                                            Map<String, String> properties,
+                                            List<Runnable> appliers) throws DdlException {
+        if (!table.isCloudNativeTable()) {
+            throw new DdlException("Property " + PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION +
+                    " can only be set for cloud native tables");
+        }
+        String value = properties.remove(PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION);
+        boolean newValue = Boolean.parseBoolean(value);
+        boolean oldValue = table.isCnFreeTabletCreation();
+
+        // Pre-downgrade backfill: when transitioning from cn-free to non-cn-free, write
+        // version 1 metadata + schema file to object storage for every tablet so that an
+        // older CN (without cn-free fallback) can read these tablets after downgrade.
+        // This must run before the property change is persisted; if it fails the ALTER
+        // is aborted and can be retried.
+        if (oldValue && !newValue) {
+            backfillCnFreeTablets(db, table);
+        }
+
+        appliers.add(() -> {
+            table.setCnFreeTabletCreation(newValue);
+        });
+    }
+
+    private void backfillCnFreeTablets(Database db, OlapTable table) throws DdlException {
+        // Only partitions still at visible version 1 need backfill: their tablets have no
+        // v1 metadata in object storage (FE skipped CreateReplicaTask under cn-free) and
+        // no v2+ either (no successful publish yet). Partitions with visible version > 1
+        // already have v2+ on object storage, which an older CN can read directly.
+        List<PhysicalPartition> partitions = new ArrayList<>();
+        for (Partition partition : table.getPartitions()) {
+            for (PhysicalPartition pp : partition.getSubPartitions()) {
+                if (pp.getVisibleVersion() == Partition.PARTITION_INIT_VERSION) {
+                    partitions.add(pp);
+                }
+            }
+        }
+        if (partitions.isEmpty()) {
+            return;
+        }
+        ComputeResource computeResource = ConnectContext.get() != null
+                ? ConnectContext.get().getCurrentComputeResource()
+                : WarehouseManager.DEFAULT_RESOURCE;
+        buildPartitions(db, table, partitions, computeResource, /* forceCreateTablet = */ true);
+    }
+
     private void alterLakeCompactionMaxParallel(OlapTable table,
                                                 Map<String, String> properties,
                                                 List<Runnable> appliers) throws DdlException {
@@ -4232,6 +4288,9 @@ public class LocalMetastore implements ConnectorMetadata, MVRepairHandler, Memor
         }
         if (propertiesToPersist.containsKey(PropertyAnalyzer.PROPERTIES_LAKE_COMPACTION_MAX_PARALLEL)) {
             alterLakeCompactionMaxParallel(table, properties, appliers);
+        }
+        if (propertiesToPersist.containsKey(PropertyAnalyzer.PROPERTIES_CN_FREE_TABLET_CREATION)) {
+            alterCnFreeTabletCreation(db, table, properties, appliers);
         }
         if (propertiesToPersist.containsKey(PropertyAnalyzer.PROPERTIES_TABLE_QUERY_TIMEOUT)) {
             alterTableQueryTimeout(table, properties, appliers);

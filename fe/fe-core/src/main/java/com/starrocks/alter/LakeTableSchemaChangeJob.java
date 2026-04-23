@@ -93,6 +93,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -398,9 +399,11 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
         long numTablets = 0;
         AgentBatchTask batchTask = new AgentBatchTask();
         MarkedCountDownLatch<Long, Long> countDownLatch;
+        boolean cnFreeTabletCreation;
         try (ReadLockedDatabase db = getReadLockedDatabase(dbId)) {
             OlapTable table = getTableOrThrow(db, tableId);
             Preconditions.checkState(table.getState() == OlapTable.OlapTableState.SCHEMA_CHANGE);
+            cnFreeTabletCreation = table.isCnFreeTabletCreation();
 
             // disable tablet creation optimaization to avoid overwriting files with the same name.
             if (table.isFileBundling()) {
@@ -417,7 +420,10 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
             long baseIndexMetaId = table.getBaseIndexMetaId();
             long gtid = getNextGtid();
             final WarehouseManager warehouseManager = GlobalStateMgr.getCurrentState().getWarehouseMgr();
-            for (long physicalPartitionId : physicalPartitionIndexMap.rowKeySet()) {
+            // For cn-free tablet creation, skip building CreateReplicaTask. Version 1 metadata
+            // of shadow tablets is constructed on demand via cn-free fallback on CN.
+            for (long physicalPartitionId : cnFreeTabletCreation ? Collections.<Long>emptySet()
+                                                                    : physicalPartitionIndexMap.rowKeySet()) {
                 PhysicalPartition physicalPartition = table.getPhysicalPartition(physicalPartitionId);
                 Preconditions.checkState(physicalPartition != null);
                 TStorageMedium storageMedium = table.getPartitionInfo()
@@ -496,8 +502,12 @@ public class LakeTableSchemaChangeJob extends LakeTableSchemaChangeJobBase {
             throw new AlterCancelException(e.getMessage());
         }
 
-        sendAgentTaskAndWait(batchTask, countDownLatch, Config.tablet_create_timeout_second * numTablets,
-                             waitingCreatingReplica, isCancelling);
+        // For cn-free tablet creation, skip sending CreateReplicaTask. Version 1 metadata
+        // of shadow tablets is constructed on demand via cn-free fallback on CN.
+        if (!cnFreeTabletCreation) {
+            sendAgentTaskAndWait(batchTask, countDownLatch, Config.tablet_create_timeout_second * numTablets,
+                                 waitingCreatingReplica, isCancelling);
+        }
 
         // Add shadow indexes to table.
         try (WriteLockedDatabase db = getWriteLockedDatabase(dbId)) {
