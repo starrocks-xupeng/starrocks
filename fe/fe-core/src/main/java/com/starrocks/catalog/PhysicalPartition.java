@@ -23,6 +23,7 @@ import com.google.gson.annotations.SerializedName;
 import com.starrocks.catalog.MaterializedIndex.IndexExtState;
 import com.starrocks.catalog.MaterializedIndex.IndexState;
 import com.starrocks.common.FeConstants;
+import com.starrocks.lake.vacuum.TabletVacuumInFlightState;
 import com.starrocks.persist.gson.GsonPostProcessable;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.transaction.TransactionType;
@@ -157,8 +158,17 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
 
     @SerializedName(value = "bucketNum")
     private int bucketNum = 0;
-    
+
     private final AtomicLong extraFileSize = new AtomicLong(0);
+
+    // Per-tablet vacuum propose+commit in-flight pointers, keyed by tabletId. Sparse:
+    // only tablets with a pending commit range or a non-zero next-chain-walk pointer
+    // have entries. Persisted (image + journal) because losing this after FE restart
+    // would cause the next chain walk to race with already-deleted metadata files.
+    // No concurrency protection needed: AutovacuumDaemon's vacuumingPartitions set
+    // serializes vacuum on the same partition, and replay runs single-threaded.
+    @SerializedName(value = "vacInflight")
+    private Map<Long, TabletVacuumInFlightState> vacuumInFlightStates = Maps.newHashMap();
 
     private PhysicalPartition() {
 
@@ -298,6 +308,35 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
 
     public void incExtraFileSize(long addFileSize) {
         this.extraFileSize.addAndGet(addFileSize);
+    }
+
+    // Returns the in-flight vacuum pointer state for a tablet, or null if none.
+    public TabletVacuumInFlightState getVacuumInFlightState(long tabletId) {
+        return vacuumInFlightStates != null ? vacuumInFlightStates.get(tabletId) : null;
+    }
+
+    // Returns the full in-flight pointer map (never null). The returned map is the
+    // live backing map; do NOT mutate it directly — call applyVacuumInFlightStateUpdate
+    // so EditLog and in-memory state stay in sync.
+    public Map<Long, TabletVacuumInFlightState> getVacuumInFlightStates() {
+        return vacuumInFlightStates;
+    }
+
+    // Apply a batch of per-tablet pointer updates. Non-empty entries overwrite (or
+    // insert); entries whose state isEmpty() are removed so the map stays sparse.
+    // Caller is responsible for journaling — typically called from VacuumInFlightStateLog.applyToCatalog().
+    public void applyVacuumInFlightStateUpdate(Map<Long, TabletVacuumInFlightState> updates) {
+        if (updates == null || updates.isEmpty()) {
+            return;
+        }
+        for (Map.Entry<Long, TabletVacuumInFlightState> e : updates.entrySet()) {
+            TabletVacuumInFlightState s = e.getValue();
+            if (s == null || s.isEmpty()) {
+                vacuumInFlightStates.remove(e.getKey());
+            } else {
+                vacuumInFlightStates.put(e.getKey(), s);
+            }
+        }
     }
 
     /*
@@ -768,6 +807,9 @@ public class PhysicalPartition extends MetaObject implements GsonPostProcessable
         }
         if (versionTxnType == null) {
             versionTxnType = TransactionType.TXN_NORMAL;
+        }
+        if (vacuumInFlightStates == null) {
+            vacuumInFlightStates = Maps.newHashMap();
         }
 
         if (baseIndexMetaId == -1L) {

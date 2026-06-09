@@ -40,6 +40,7 @@ import com.google.gson.JsonParseException;
 import com.starrocks.alter.AlterJobV2;
 import com.starrocks.alter.BatchAlterJobPersistInfo;
 import com.starrocks.alter.reshard.TabletReshardJob;
+import com.starrocks.lake.vacuum.VacuumInFlightStateLog;
 import com.starrocks.authentication.AuthenticationMgr;
 import com.starrocks.authentication.UserPropertyInfo;
 import com.starrocks.backup.BackupJob;
@@ -1344,6 +1345,11 @@ public class EditLog {
                     globalStateMgr.getTabletReshardJobMgr().replayUpdateTabletReshardJob(log);
                     break;
                 }
+                case OperationType.OP_UPDATE_LAKE_VACUUM_INFLIGHT_STATE: {
+                    VacuumInFlightStateLog log = (VacuumInFlightStateLog) journal.data();
+                    log.applyToCatalog();
+                    break;
+                }
                 case OperationType.OP_REMOVE_TABLET_RESHARD_JOB_LOG: {
                     RemoveTabletReshardJobLog log = (RemoveTabletReshardJobLog) journal.data();
                     globalStateMgr.getTabletReshardJobMgr().replayRemoveTabletReshardJob(log.getJobId());
@@ -2351,6 +2357,10 @@ public class EditLog {
 
     public void logUpdateTabletReshardJob(TabletReshardJob job) {
         logJsonObject(OperationType.OP_UPDATE_TABLET_RESHARD_JOB_LOG, job);
+    }
+
+    public void logUpdateLakeVacuumInFlightState(VacuumInFlightStateLog log) {
+        logJsonObject(OperationType.OP_UPDATE_LAKE_VACUUM_INFLIGHT_STATE, log);
     }
 
     public void logRemoveTabletReshardJob(long jobId, WALApplier walApplier) {
